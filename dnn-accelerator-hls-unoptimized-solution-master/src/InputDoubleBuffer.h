@@ -32,11 +32,9 @@ public:
             // -------------------------------
 
             Params params = paramsIn.read();
-            ac_int<ac::log2_ceil<size+1>::val, false> tileSize = ((params.OX0 - 1) * params.STRIDE + params.FX) * 
-                                ((params.OY0 - 1) * params.STRIDE + params.FY) * 
-                                params.IC1;
+            ac_int<ac::log2_ceil<size+1>::val, false> tileSize = (IX0_MAX) * (IY0_MAX) * IC1_MAX;
             
-            TILES: for (int t = 0; t < params.OX1 * params.OY1; t++) {
+            TILES: for (int t = 0; t < OX1_MAX * OY1_MAX; t++) {
                 chanStruct<PackedInt<INPUT_PRECISION,IC0>,size> tmp;
 
                 // record one tile in buffer
@@ -51,9 +49,17 @@ public:
                         }
                     }
                     tmp.data[i] = memCol;
+                    if (i == ((params.OX0 - 1) * params.STRIDE + params.FX) * 
+                                ((params.OY0 - 1) * params.STRIDE + params.FY) * 
+                                params.IC1 -1) {
+                        break; // no more data to read for this tile
+                    }
                 } // TILE
                 // write a tile
                 dout.write(tmp);
+                if (t == params.OX1 * params.OY1 - 1) {
+                    break; // no more tiles to read
+                }
             } // TILES
 
             // -------------------------------
@@ -85,30 +91,50 @@ public:
             uint_16 IX0 = (params.OX0 - 1) * params.STRIDE + params.FX;
             uint_16 IY0 = (params.OY0 - 1) * params.STRIDE + params.FY;
 
-            TILES: for (int t = 0; t < params.OX1 * params.OY1; t++) {
+            TILES: for (int t = 0; t < OX1_MAX * OY1_MAX; t++) {
                 chanStruct<PackedInt<INPUT_PRECISION, IC0>,size> tmp;
                 
                 // read one tile from memory, and pass out one address at a time in the correct order
                 tmp = din.read();
                 // OC1 reuses
-                OC1: for (int oc1 = 0; oc1 < params.OC1; oc1++) {
-                    IC1: for (int ic1 = 0; ic1 < params.IC1; ic1++) {
-                        FY: for (int fy = 0; fy < params.FY; fy++) {
-                            FX: for (int fx = 0; fx < params.FX; fx++) {
-                                OY0: for (int oy0 = 0; oy0 < params.OY0; oy0++) { 
-                                    OX0: for (int ox0 = 0; ox0 < params.OX0; ox0++) { 
+                OC1: for (int oc1 = 0; oc1 < OC1_MAX; oc1++) {
+                    IC1: for (int ic1 = 0; ic1 < IC1_MAX; ic1++) {
+                        FY: for (int fy = 0; fy < FY_MAX; fy++) {
+                            FX: for (int fx = 0; fx < FX_MAX; fx++) {
+                                OY0: for (int oy0 = 0; oy0 < OY0_MAX; oy0++) { 
+                                    OX0: for (int ox0 = 0; ox0 < OX0_MAX; ox0++) { 
                                         uint_16 address = 
                                                 params.STRIDE * ox0 + fx +
                                                 (params.STRIDE * oy0 + fy) * IX0 +
                                                 IY0 * IX0 * ic1;
                                         dout.write(tmp.data[address]);
-
+                                        if (ox0 == params.OX0 - 1) {
+                                            break; // no more ox0 to read for this tile
+                                        }
                                     } // OX0
+                                    if (oy0 == params.OY0 - 1) {
+                                        break; // no more oy0 to read for this tile
+                                    }
                                 } // OY0
+                                if (fx == params.FX - 1) {
+                                    break; // no more fx to read for this tile
+                                }
                             } // FX
+                            if (fy == params.FY - 1) {
+                                break; // no more fy to read for this tile
+                            }
                         } // FY
+                        if (ic1 == params.IC1 - 1) {
+                            break; // no more ic1 to read for this tile
+                        }
                     } // IC1
+                    if (oc1 == params.OC1 - 1) {
+                        break; // no more oc1 to read for this tile
+                    }
                 } // OC1
+                if (t == params.OX1 * params.OY1 - 1) {
+                    break; // no more tiles to read
+                }
             } // TILES
 
             // -------------------------------

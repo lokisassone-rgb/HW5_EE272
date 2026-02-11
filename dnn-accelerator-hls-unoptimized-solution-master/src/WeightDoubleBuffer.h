@@ -30,9 +30,9 @@ public:
         #endif
         {
             Params params = paramsIn.read();
-            ac_int<ac::log2_ceil<size+1>::val, false> tileSize = params.FX * params.FY * IC0 * params.IC1;
+            ac_int<ac::log2_ceil<size+1>::val, false> tileSize = FX_MAX * FY_MAX * IC0 * IC1_MAX;
 
-            TILES: for (int t = 0; t < params.OX1 * params.OY1 * params.OC1; t++) {
+            TILES: for (int t = 0; t < OX1_MAX * OY1_MAX * OC1_MAX; t++) {
                 chanStruct<PackedInt<WEIGHT_PRECISION, OC0>,size> tmp;
                 TILE: for (int i = 0; i < tileSize; i++) {
                     // each packet contains 4 values, pack OC0 tgt into one row
@@ -45,9 +45,15 @@ public:
                         }
                     }
                     tmp.data[i] = memRow;
-
+                    if (i == params.FX * params.FY * IC0 * IC1_MAX - 1) {
+                        break; // no more data to read for this tile
+                    }
                 }  // TILE
                 dout.write(tmp);
+                
+                if(t == params.OX1 * params.OY1 * params.OC1 - 1) {
+                    break; // no more tiles to read
+                }
             } // TILES
         }
 
@@ -76,15 +82,21 @@ public:
         #endif
         {
             Params params = paramsIn.read();
-            ac_int<ac::log2_ceil<size+1>::val, false> tileSize = params.FX * params.FY * IC0 * params.IC1;
+            ac_int<ac::log2_ceil<size+1>::val, false> tileSize = FX_MAX * FY_MAX * IC0 * IC1_MAX;
 
             // read in new tile for every oc1
-            TILES: for (int t = 0; t < params.OX1 * params.OY1 * params.OC1; t++) {
+            TILES: for (int t = 0; t < OX1_MAX * OY1_MAX * OC1_MAX; t++) {
                 chanStruct<PackedInt<WEIGHT_PRECISION, OC0>,size> tmp;
                 tmp = din.read();
                 TILE: for (int i = 0; i < tileSize; i++) {
                     dout.write(tmp.data[i]);
+                    if (i == params.FX * params.FY * IC0 * params.IC1 - 1) {
+                        break; // no more data to read for this tile
+                    }
                 } // TILE
+                if (t == params.OX1 * params.OY1 * params.OC1 - 1) {
+                    break; // no more tiles to read
+                }
             } // TILES
         }
 
