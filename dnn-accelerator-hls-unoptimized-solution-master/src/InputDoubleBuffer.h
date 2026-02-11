@@ -32,7 +32,9 @@ public:
             // -------------------------------
 
             Params params = paramsIn.read();
-            ac_int<ac::log2_ceil<size+1>::val, false> tileSize = (IX0_MAX) * (IY0_MAX) * IC1_MAX;
+            ac_int<ac::log2_ceil<size+1>::val, false> tileSize = (((params.OX0 - 1) * params.STRIDE + params.FX) * 
+                                ((params.OY0 - 1) * params.STRIDE + params.FY) * 
+                                params.IC1);
             
             TILES: for (int t = 0; t < OX1_MAX * OY1_MAX; t++) {
                 chanStruct<PackedInt<INPUT_PRECISION,IC0>,size> tmp;
@@ -49,11 +51,6 @@ public:
                         }
                     }
                     tmp.data[i] = memCol;
-                    if (i == ((params.OX0 - 1) * params.STRIDE + params.FX) * 
-                                ((params.OY0 - 1) * params.STRIDE + params.FY) * 
-                                params.IC1 -1) {
-                        break; // no more data to read for this tile
-                    }
                 } // TILE
                 // write a tile
                 dout.write(tmp);
