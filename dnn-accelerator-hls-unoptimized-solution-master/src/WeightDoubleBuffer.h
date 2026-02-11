@@ -31,7 +31,7 @@ public:
         {
             Params params = paramsIn.read();
             ac_int<ac::log2_ceil<size+1>::val, false> tileSize = params.FX * params.FY * IC0 * params.IC1;
-
+            #pragma hls_pipeline_init_interval 1
             TILES: for (int t = 0; t < params.OX1 * params.OY1 * params.OC1; t++) {
                 chanStruct<PackedInt<WEIGHT_PRECISION, OC0>,size> tmp;
                 TILE: for (int i = 0; i < tileSize; i++) {
@@ -39,7 +39,7 @@ public:
                     PackedInt<WEIGHT_PRECISION, OC0> memRow;  // one row in the memory
                     for (int j = 0; j < OC0; j=j+4) {
                         PackedInt<WEIGHT_PRECISION, 4> packet = din.read();
-
+                        #pragma hls_unroll yes
                         for (int k = 0; k < 4; k++) {
                             memRow.value[j+k] = packet.value[k];
                         }
@@ -79,6 +79,7 @@ public:
             ac_int<ac::log2_ceil<size+1>::val, false> tileSize = params.FX * params.FY * IC0 * params.IC1;
 
             // read in new tile for every oc1
+            #pragma hls_pipeline_init_interval 1
             TILES: for (int t = 0; t < params.OX1 * params.OY1 * params.OC1; t++) {
                 chanStruct<PackedInt<WEIGHT_PRECISION, OC0>,size> tmp;
                 tmp = din.read();

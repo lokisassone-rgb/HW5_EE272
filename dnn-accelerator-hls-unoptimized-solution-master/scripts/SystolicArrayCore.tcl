@@ -54,6 +54,7 @@ go architect
 # To solve this, you need to use 'ignore_memory_precedences', Iterate on the design to ignore memory precedences that show up (make sure there is no real dependency)
 # Your code starts here
 # -------------------------------
+ignore_memory_precedences -from *write_mem(accumulation_buffer.value.value:rsc* -to *read_mem(accumulation_buffer.value.value:rsc*
 
 # -------------------------------
 # Your code ends here
