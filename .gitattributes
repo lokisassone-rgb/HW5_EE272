@@ -1,0 +1,1 @@
+dnn-accelerator-hls-unoptimized-solution-master/compare/* filter=lfs diff=lfs merge=lfs -text
