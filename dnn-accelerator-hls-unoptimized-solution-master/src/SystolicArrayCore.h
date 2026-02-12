@@ -158,17 +158,12 @@ public:
             // -------------------------------
             // Load weights once per IC1×FX×FY
             // -------------------------------
-            if (group_idx < groups && in_group_step == 0) {
-                for (int i = 0; i < IC0_MAX; i++) {
-                    if (i < IC0) {
-                        PackedInt<WEIGHT_PRECISION, OC0> w_row = weight.read();
-                        #pragma hls_unroll yes
-                        for (int j = 0; j < OC0_MAX; j++) {
-                            weight_reg[i][j] = w_row.value[j];
-                            if (j == OC0 - 1) break;
-                        }
-                    }
-                    if (i == IC0 - 1) break;
+            if (group_idx < groups && in_group_step < IC0) {
+                PackedInt<WEIGHT_PRECISION, OC0> w_row = weight.read();
+                #pragma hls_unroll yes
+                for (int j = 0; j < OC0_MAX; j++) {
+                    weight_reg[in_group_step][j] = w_row.value[j];
+                    if (j == OC0 - 1) break;
                 }
             }
 
