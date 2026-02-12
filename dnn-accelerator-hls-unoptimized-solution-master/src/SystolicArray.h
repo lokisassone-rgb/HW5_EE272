@@ -30,12 +30,11 @@ void run(ac_channel<Params> &paramsIn,
         {
         Params params = paramsIn.read();
 
-        #pragma hls_pipeline_init_interval 1
-        LABEL(xy_o) for (uint_16 p = 0; p < OX1_MAX * OY1_MAX; ++p) { //loop over image tiles          
-            LABEL(OC2) for(uint_16 oc1 = 0; oc1 < OC1_MAX; ++oc1){ // loop over kernel tiles    
-                LABEL(co) for (uint_16 ic1 = 0; ic1 < IC1_MAX; ++ic1) { // loop over channel tile
-                    LABEL(winx) for (uint_16 fx = 0; fx < FX_MAX; ++fx) { // loop over filter window x
-                        LABEL(winy) for (uint_16 fy = 0; fy < FY_MAX; ++fy) { // loop over filter window y
+        LABEL(xy_o) for (uint_16 p = 0; p < params.OX1 * params.OY1; ++p) { //loop over image tiles        
+            LABEL(OC2) for(uint_16 oc1 = 0; oc1 < params.OC1; ++oc1){ // loop over kernel tiles    
+                LABEL(co) for (uint_16 ic1 = 0; ic1 < params.IC1; ++ic1) { // loop over channel tile
+                    LABEL(winx) for (uint_16 fx = 0; fx < params.FX; ++fx) { // loop over filter window x
+                        LABEL(winy) for (uint_16 fy = 0; fy < params.FY; ++fy) { // loop over filter window y
                                 LoopIndices loopIndices = {
                                     ic1, 
                                     fx, 
@@ -43,15 +42,11 @@ void run(ac_channel<Params> &paramsIn,
                                 };
                                 loopIndicesOut.write(loopIndices);
                                 paramsOut.write(params);
-                                if (fy == params.FY - 1) break;
+                            
                         }
-                        if (fx == params.FX - 1) break;
                     }
-                    if (ic1 == params.IC1 - 1) break;
                 }
-                if (oc1 == params.OC1 - 1) break;
             }
-            if (p == params.OX1 * params.OY1 - 1) break;
         }
         }
         // -------------------------------
