@@ -63,6 +63,23 @@ class SystolicArrayCore
 
 public:
     SystolicArrayCore() {
+        // Initialize internal buffers to 0
+        for (int pix = 0; pix < ACCUMULATION_BUFFER_SIZE; pix++) {
+            for (int j = 0; j < OC0; j++) {
+                accumulation_buffer[pix][j] = 0;
+            }
+        }
+
+        for (int i = 0; i < IC0; i++) {
+            for (int j = 0; j < OC0+1; j++) input_reg[i][j] = 0;
+            for (int j = 0; j < OC0; j++) input_reg2[i][j] = 0;
+            for (int j = 0; j < OC0; j++) psum_reg2[i][j] = 0;
+            for (int j = 0; j < OC0; j++) weight_reg[i][j] = 0;
+        }
+
+        for (int i = 0; i < IC0+1; i++) {
+            for (int j = 0; j < OC0; j++) psum_reg[i][j] = 0;
+        }
         #if HLS_DEBUG
         #ifndef __SYNTHESIS__
 
