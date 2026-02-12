@@ -29,7 +29,7 @@ void run(ac_channel<Params> &paramsIn,
         #endif
         {
         Params params = paramsIn.read();
-        #pragma hls_pipeline_init_interval 1
+        #pragma hls_pipeline_init_interval 2
         LABEL(xy_o) for (uint_16 p = 0; p < OX1_MAX * OY1_MAX; ++p) { //loop over image tiles        
             LABEL(OC2) for(uint_16 oc1 = 0; oc1 < OC1_MAX; ++oc1){ // loop over kernel tiles    
                 LABEL(co) for (uint_16 ic1 = 0; ic1 < IC1_MAX; ++ic1) { // loop over channel tile
