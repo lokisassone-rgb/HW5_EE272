@@ -157,7 +157,7 @@ public:
             // -------------------------------
             // Load weights once per IC1×FX×FY
             // -------------------------------
-            if (step < mac_iters && ox0 == 0 && oy0 == 0) {
+            if (step < mac_iters && pix == 0) {
                 for (int i = 0; i < IC0_MAX; i++) {
                     if (i < IC0) {
                         PackedInt<WEIGHT_PRECISION, OC0> w_row = weight.read();
@@ -303,10 +303,10 @@ public:
                 ox0 = 0;
                 if (++oy0 == params.OY0) {
                     oy0 = 0;
-                    if (++fy == params.FY) {
-                        fy = 0;
-                        if (++fx == params.FX) {
-                            fx = 0;
+                    if (++fx == params.FX) {
+                        fx = 0;
+                        if (++fy == params.FY) {
+                            fy = 0;
                             ic1++;
                         }
                     }
