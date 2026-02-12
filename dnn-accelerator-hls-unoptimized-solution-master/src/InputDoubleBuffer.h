@@ -35,26 +35,33 @@ public:
             ac_int<ac::log2_ceil<size+1>::val, false> tileSize = ((params.OX0 - 1) * params.STRIDE + params.FX) * 
                                 ((params.OY0 - 1) * params.STRIDE + params.FY) * 
                                 params.IC1;
-            #pragma hls_pipeline_init_interval 1
-            TILES: for (int t = 0; t < params.OX1 * params.OY1; t++) {
+            // ac_int<ac::log2_ceil<size+1>::val, false> tileSize_MAX = ((OX0_MAX - 1) * STRIDE_MAX + FX_MAX) * ((OY0_MAX - 1) * STRIDE_MAX + FY_MAX) * IC1_MAX;
+
+            #pragma hls_pipeline_init_interval 1            
+            TILES: for (int t = 0; t < params.OX1*params.OY1; t++) {
                 chanStruct<PackedInt<INPUT_PRECISION,IC0>,size> tmp;
 
                 // record one tile in buffer
+                // #pragma hls_pipeline_init_interval 1
                 TILE: for (int i = 0; i < tileSize; i++) {
                     PackedInt<INPUT_PRECISION, IC0> memCol;  // one column in the memory
                     // each packet contains 4 values, pack IC0 tgt into one row
-                  //  #pragma hls_unroll yes
-                    for (int j = 0; j < IC0; j=j+4) {
+                    for (int j = 0; j < IC0_MAX; j=j+4) {
                         PackedInt<INPUT_PRECISION, 4> packet = din.read();
                         #pragma hls_unroll yes
                         for (int k = 0; k < 4; k++) {
                             memCol.value[j+k] = packet.value[k];
                         }
+                        if (j == IC0 - 4) {
+                            break;
+                        }
                     }
                     tmp.data[i] = memCol;
+                    // if (i == tileSize-1) break;
                 } // TILE
                 // write a tile
                 dout.write(tmp);
+                // if (t == params.OX1 * params.OY1 - 1) break;
             } // TILES
 
             // -------------------------------
@@ -87,31 +94,38 @@ public:
             uint_16 IY0 = (params.OY0 - 1) * params.STRIDE + params.FY;
 
             #pragma hls_pipeline_init_interval 1
-            TILES: for (int t = 0; t < params.OX1 * params.OY1; t++) {
+            TILES: for (int t = 0; t < params.OX1*params.OY1; t++) {
                 chanStruct<PackedInt<INPUT_PRECISION, IC0>,size> tmp;
                 
                 // read one tile from memory, and pass out one address at a time in the correct order
                 tmp = din.read();
                 // OC1 reuses
-                OC1: for (int oc1 = 0; oc1 < params.OC1; oc1++) {
-                    IC1: for (int ic1 = 0; ic1 < params.IC1; ic1++) {
-                        FY: for (int fy = 0; fy < params.FY; fy++) {
-                            FX: for (int fx = 0; fx < params.FX; fx++) {
-                                OY0: for (int oy0 = 0; oy0 < params.OY0; oy0++) { 
-                                    #pragma hls_pipeline_init_interval 1
-                                    OX0: for (int ox0 = 0; ox0 < params.OX0; ox0++) { 
+                // #pragma hls_pipeline_init_interval 1
+                OC1: for (int oc1 = 0; oc1 < OC1_MAX; oc1++) {
+                    IC1: for (int ic1 = 0; ic1 < IC1_MAX; ic1++) {
+                        FY: for (int fy = 0; fy < FY_MAX; fy++) {
+                            FX: for (int fx = 0; fx < FX_MAX; fx++) {
+                                OY0: for (int oy0 = 0; oy0 < OY0_MAX; oy0++) { 
+                                    OX0: for (int ox0 = 0; ox0 < OX0_MAX; ox0++) { 
                                         uint_16 address = 
                                                 params.STRIDE * ox0 + fx +
                                                 (params.STRIDE * oy0 + fy) * IX0 +
                                                 IY0 * IX0 * ic1;
                                         dout.write(tmp.data[address]);
 
+                                        if (ox0 == params.OX0 - 1) break;
                                     } // OX0
+                                    if (oy0 == params.OY0 - 1) break;
                                 } // OY0
+                                if (fx == params.FX - 1) break;
                             } // FX
+                            if (fy == params.FY - 1) break;
                         } // FY
+                        if (ic1 == params.IC1 - 1) break;
                     } // IC1
+                    if (oc1 == params.OC1 - 1) break;
                 } // OC1
+                // if (t == params.OX1 * params.OY1 - 1) break; 
             } // TILES
 
             // -------------------------------
