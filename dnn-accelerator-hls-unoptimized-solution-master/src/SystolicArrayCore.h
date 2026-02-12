@@ -147,7 +147,6 @@ public:
                 // This happens once per IC1×FX×FY combination
                 // -------------------------------
                 if (pix == 0 && step < mac_iters) {
-                    #pragma hls_unroll yes
                     for(int i = 0; i < IC0_MAX; i++){
                         if (i < IC0) {
                             PackedInt<WEIGHT_PRECISION, OC0> w_row = weight.read();
