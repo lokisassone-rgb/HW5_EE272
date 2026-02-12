@@ -47,6 +47,16 @@ template <typename T>
             int fx_idx  = (flat_idx / (OY0 * OX0)) % FX;
             int oy0_idx = (flat_idx / OX0) % OY0;
             int ox0_idx = flat_idx % OX0;
+#ifndef __SYNTHESIS__
+            if (flat_idx < 10) {
+                std::cout << "flat_idx=" << flat_idx
+                          << " ic1_idx=" << ic1_idx
+                          << " fy_idx=" << fy_idx
+                          << " fx_idx=" << fx_idx
+                          << " oy0_idx=" << oy0_idx
+                          << " ox0_idx=" << ox0_idx << std::endl;
+            }
+#endif
 
             // Example: Use these indices for your computation
             // You may need to update the logic below to use these indices
@@ -58,11 +68,25 @@ template <typename T>
                 for(int j = 0; j < OC0; j++){
                     weight_reg[flat_idx][j] = w_row.value[j];
                 }
+#ifndef __SYNTHESIS__
+                if (flat_idx < 10) {
+                    std::cout << "Weight: ";
+                    for (int j = 0; j < OC0; ++j) std::cout << int(weight_reg[flat_idx][j]) << " ";
+                    std::cout << std::endl;
+                }
+#endif
             }
 
             PackedInt<INPUT_PRECISION, IC0> in_col;
             if (flat_idx < (OX0 * OY0)) {
                 in_col = input.read();
+#ifndef __SYNTHESIS__
+                if (flat_idx < 10) {
+                    std::cout << "Input: ";
+                    for (int i = 0; i < IC0; ++i) std::cout << int(in_col.value[i]) << " ";
+                    std::cout << std::endl;
+                }
+#endif
             }
 
             PackedInt<INPUT_PRECISION, IC0> input_buf;
@@ -91,6 +115,13 @@ template <typename T>
                     for(int j = 0; j < OC0; j++){
                         psum_buf.value[j] = accumulation_buffer[flat_idx][j];
                     }
+#ifndef __SYNTHESIS__
+                    if (flat_idx < 10) {
+                        std::cout << "AccumBuf before: ";
+                        for (int j = 0; j < OC0; ++j) std::cout << int(accumulation_buffer[flat_idx][j]) << " ";
+                        std::cout << std::endl;
+                    }
+#endif
                 }
             }
 
@@ -127,8 +158,20 @@ template <typename T>
                 for(int i = 0; i < OC0; i++){
                     accumulation_buffer[flat_idx-(IC0+OC0-1)][i] = output_row.value[i];
                 }
+#ifndef __SYNTHESIS__
+                if (flat_idx < 10) {
+                    std::cout << "AccumBuf after: ";
+                    for (int j = 0; j < OC0; ++j) std::cout << int(accumulation_buffer[flat_idx-(IC0+OC0-1)][j]) << " ";
+                    std::cout << std::endl;
+                }
+#endif
                 if (ic1_idx == IC1-1 && fx_idx == FX-1 && fy_idx == FY-1) {   
                     output.write(output_row);
+#ifndef __SYNTHESIS__
+                    std::cout << "Output written at flat_idx=" << flat_idx << ": ";
+                    for (int j = 0; j < OC0; ++j) std::cout << int(output_row.value[j]) << " ";
+                    std::cout << std::endl;
+#endif
                 }
             }
 
