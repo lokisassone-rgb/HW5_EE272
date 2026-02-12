@@ -125,6 +125,14 @@ public:
             // -------------------------------
             Params params = paramsIn.read();
 
+            #ifndef __SYNTHESIS__
+            static int run_debug_idx = 0;
+            int local_run_idx = run_debug_idx++;
+            int debug_input_reads = 0;
+            int debug_weight_reads = 0;
+            int debug_output_writes = 0;
+            #endif
+
             // -------------------------------
             // HW5 Section 5: Flatten all inner loops into one INNER_LOOP
             // Total MAC iterations = IC1 × FX × FY × OX0 × OY0
@@ -227,6 +235,9 @@ public:
                 for (int i = 0; i < IC0_MAX; i++) {
                     if (i < IC0) {
                         PackedInt<WEIGHT_PRECISION, OC0> w_row = weight.read();
+                        #ifndef __SYNTHESIS__
+                        debug_weight_reads++;
+                        #endif
                         #pragma hls_unroll yes
                         for (int j = 0; j < OC0_MAX; j++) {
                             weight_reg[i][j] = w_row.value[j];
@@ -243,6 +254,9 @@ public:
             PackedInt<INPUT_PRECISION, IC0> in_col;
             if (step < mac_iters) {
                 in_col = input.read();
+                #ifndef __SYNTHESIS__
+                debug_input_reads++;
+                #endif
             } else {
                 #pragma hls_unroll yes
                 for (int k = 0; k < IC0_MAX; k++) {
@@ -368,6 +382,9 @@ public:
                     out_fy  == params.FY-1  &&
                     out_fx  == params.FX-1) {
                     output.write(output_row);
+                    #ifndef __SYNTHESIS__
+                    debug_output_writes++;
+                    #endif
                 }
             }
 
@@ -387,6 +404,21 @@ public:
 
             // Input/output indices are derived from step; no manual counter update needed.
         }
+
+        #ifndef __SYNTHESIS__
+        int expected_input_reads = (int)(params.IC1 * params.FX * params.FY * tile_size);
+        int expected_weight_reads = (int)(params.IC1 * params.FX * params.FY * IC0);
+        int expected_output_writes = (int)tile_size;
+        if (debug_input_reads != expected_input_reads ||
+            debug_weight_reads != expected_weight_reads ||
+            debug_output_writes != expected_output_writes) {
+            std::cout << "[CORE DEBUG] run=" << local_run_idx
+                      << " input_reads=" << debug_input_reads << " (exp " << expected_input_reads << ")"
+                      << " weight_reads=" << debug_weight_reads << " (exp " << expected_weight_reads << ")"
+                      << " output_writes=" << debug_output_writes << " (exp " << expected_output_writes << ")"
+                      << std::endl;
+        }
+        #endif
 
         }
     
