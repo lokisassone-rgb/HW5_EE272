@@ -118,8 +118,8 @@ void CCS_BLOCK(run)(
         // -------------------------------
         if (step < mac_iters && ox0 == 0 && oy0 == 0) {
             for (int i = 0; i < IC0; i++) {
-#pragma hls_unroll yes
                 for (int j = 0; j < OC0; j++) {
+#pragma hls_pipeline II=1
                     PackedInt<WEIGHT_PRECISION, OC0> w_row = weight.read();
                     weight_reg[i][j] = w_row.value[j];
                 }
@@ -145,7 +145,6 @@ void CCS_BLOCK(run)(
 
         REPEAT(INPUT_FIFO_BODY)
 
-#pragma hls_unroll yes
         for (int i = 0; i < IC0; i++) input_reg[i][0] = input_buf.value[i];
 
         // -------------------------------
@@ -154,10 +153,8 @@ void CCS_BLOCK(run)(
         PackedInt<OUTPUT_PRECISION, OC0> psum_buf;
         if (step < mac_iters) {
             if (ic1 == 0 && fx == 0 && fy == 0) {
-#pragma hls_unroll yes
                 for (int j = 0; j < OC0; j++) psum_buf.value[j].template set_val<AC_VAL_0>();
             } else {
-#pragma hls_unroll yes
                 for (int j = 0; j < OC0; j++) psum_buf.value[j] = accumulation_buffer[pix][j];
             }
         }
@@ -193,13 +190,11 @@ void CCS_BLOCK(run)(
 
         REPEAT(ACCUM_FIFO_BODY)
 
-#pragma hls_unroll yes
         for (int j = 0; j < OC0; j++) psum_reg[0][j] = output_buf.value[j];
 
-#pragma hls_unroll yes
         for (int j = 0; j < OC0; j++) {
-#pragma hls_unroll yes
             for (int i = 0; i < IC0; i++) {
+#pragma hls_pipeline II=1
                 pe[i][j].run(input_reg[i][j], psum_reg[i][j], weight_reg[i][j],
                             input_reg2[i][j], psum_reg2[i][j]);
             }
@@ -221,7 +216,6 @@ void CCS_BLOCK(run)(
         // Write back / output
         // -------------------------------
         if (step >= ramp && step < mac_iters + ramp) {
-#pragma hls_unroll yes
             for (int i = 0; i < OC0; i++) accumulation_buffer[pix][i] = output_row.value[i];
 
             if (ic1 == params.IC1-1 && fx  == params.FX-1  && fy  == params.FY-1) {
@@ -239,19 +233,27 @@ void CCS_BLOCK(run)(
         }
 
         // -------------------------------
-        // Shift registers and manual counter update
+        // Shift registers
         // -------------------------------
-#pragma hls_unroll yes
         for (int j = 0; j < OC0; j++) {
-#pragma hls_unroll yes
             for (int i = 0; i < IC0; i++) {
+#pragma hls_pipeline II=1
                 input_reg[i][j+1] = input_reg2[i][j];
                 psum_reg[i+1][j]  = psum_reg2[i][j];
             }
         }
 
         // Update counters
-        if (++ox0 == params.OX0) { ox0 = 0; if (++oy0 == params.OY0) { oy0 = 0; if (++fy == params.FY) { fy = 0; if (++fx == params.FX) { fx = 0; ic1++; }}}}
+        if (++ox0 == params.OX0) { 
+            ox0 = 0; 
+            if (++oy0 == params.OY0) { 
+                oy0 = 0; 
+                if (++fy == params.FY) { 
+                    fy = 0; 
+                    if (++fx == params.FX) ic1++; 
+                }
+            }
+        }
     }
 }
 
