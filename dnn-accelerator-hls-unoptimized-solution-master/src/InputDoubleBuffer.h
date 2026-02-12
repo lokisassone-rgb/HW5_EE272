@@ -43,11 +43,14 @@ public:
                 TILE: for (int i = 0; i < tileSize; i++) {
                     PackedInt<INPUT_PRECISION, IC0> memCol;  // one column in the memory
                     // each packet contains 4 values, pack IC0 tgt into one row
-                    for (int j = 0; j < IC0; j=j+4) {
+                    for (int j = 0; j < IC0_MAX; j=j+4) {
                         PackedInt<INPUT_PRECISION, 4> packet = din.read();
                         #pragma hls_unroll yes
                         for (int k = 0; k < 4; k++) {
                             memCol.value[j+k] = packet.value[k];
+                        }
+                        if (j==IC0-4) {
+                            break;
                         }
                     }
                     tmp.data[i] = memCol;
