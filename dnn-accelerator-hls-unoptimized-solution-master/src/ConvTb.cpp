@@ -26,6 +26,8 @@ int run_layer(Params params){
     int errCnt = 0;
     int rand_init = 1;
     int mismatch_by_group[OY1_MAX][OX1_MAX][OC1_MAX] = {0};
+    int mismatch_by_lane[OC0_MAX] = {0};
+    int mismatch_by_local_pix[OY0_MAX][OX0_MAX] = {0};
 
     printf("Generating Input\n");
  
@@ -166,6 +168,8 @@ int run_layer(Params params){
                 if((long long)output_ref[ro*params.OY0+p][co*params.OX0+i][koo*OC0+j] != (long long)out_value) {
                   errCnt++;
                   mismatch_by_group[ro][co][koo]++;
+                  mismatch_by_lane[j]++;
+                  mismatch_by_local_pix[p][i]++;
                   if (errCnt < 10) {
                     printf("***ERROR***\n");
                           printf("output[%d][%d][%d] = %lld, ref = %lld\n",
@@ -189,6 +193,23 @@ int run_layer(Params params){
           if (cnt > 0) {
             printf("  (ro=%d, co=%d, koo=%d): %d mismatches\n", ro, co, koo, cnt);
           }
+        }
+      }
+    }
+
+    printf("\nMismatch breakdown by output lane j (0..%d):\n", OC0-1);
+    for (int j = 0; j < OC0; j++) {
+      if (mismatch_by_lane[j] > 0) {
+        printf("  j=%d: %d mismatches\n", j, mismatch_by_lane[j]);
+      }
+    }
+
+    printf("\nMismatch breakdown by local pixel (p,i):\n");
+    for (int p = 0; p < params.OY0; p++) {
+      for (int i = 0; i < params.OX0; i++) {
+        int cnt = mismatch_by_local_pix[p][i];
+        if (cnt > 0) {
+          printf("  (p=%d, i=%d): %d mismatches\n", p, i, cnt);
         }
       }
     }
