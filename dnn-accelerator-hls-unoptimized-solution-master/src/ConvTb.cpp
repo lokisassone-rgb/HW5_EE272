@@ -3,6 +3,7 @@
 #include "conv_gold.cpp"
 #include "Conv.cpp"
 #include "conv_tb_params.h"
+#include <fstream>
 
 template <int OFMAP_HEIGHT, 
           int OFMAP_WIDTH, 
@@ -125,6 +126,9 @@ int run_layer(Params params){
     conv_gold_tiled<IDTYPE,ODTYPE,OFMAP_HEIGHT,OFMAP_WIDTH,OFMAP_CHANNELS,IFMAP_CHANNELS,FILTER_SIZE,STRIDE>(params.OY1,  params.OY0,  params.OX1,  params.OX0,  params.OC1,  OC0,  params.IC1,  IC0,  params.FX,  params.FY, input, weight, output_ref_tiled);          
     conv_gold<IDTYPE,ODTYPE,OFMAP_HEIGHT,OFMAP_WIDTH,OFMAP_CHANNELS,IFMAP_CHANNELS,FILTER_SIZE,STRIDE>(input, weight, output_ref);          
 
+    std::ofstream dump_file("conv_output_ref_dump.csv");
+    dump_file << "row,col,ch,ro,co,koo,p,i,j,out,ref,diff,match\n";
+
     printf("\nChecking Output\n\n"); 
     // compare the hardware results with the reference model
     for (int ro = 0; ro < params.OY1; ro++) {
@@ -136,6 +140,19 @@ int run_layer(Params params){
               for (int j = 0; j < OC0; j++) {
                 
                ODTYPE out_value = output_stream.read();
+                int row = (int)(ro * params.OY0 + p);
+                int col = (int)(co * params.OX0 + i);
+                int ch  = (int)(koo * OC0 + j);
+                long long ref_value = (long long)output_ref[row][col][ch];
+                long long out_ll = (long long)out_value;
+                long long diff = out_ll - ref_value;
+                int is_match = (out_ll == ref_value) ? 1 : 0;
+
+                dump_file
+                  << row << "," << col << "," << ch << ","
+                  << ro << "," << co << "," << koo << ","
+                  << p << "," << i << "," << j << ","
+                  << out_ll << "," << ref_value << "," << diff << "," << is_match << "\n";
 
                 if ((long long)output_ref[ro*params.OY0+p][co*params.OX0+i][koo*OC0+j] != (long long)output_ref_tiled[ro*params.OY0+p][co*params.OX0+i][koo*OC0+j]) {
                   printf("***REFERENCE ERROR***\n");
@@ -161,6 +178,9 @@ int run_layer(Params params){
         } // for koo
       }  // for co
     }  // for ko
+
+    dump_file.close();
+    printf("Full output/ref dump written to conv_output_ref_dump.csv\n");
     
     printf("\nThere were %d errors\n", errCnt);
     return errCnt;
