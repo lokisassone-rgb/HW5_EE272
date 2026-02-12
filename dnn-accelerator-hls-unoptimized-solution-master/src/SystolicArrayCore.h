@@ -125,14 +125,6 @@ public:
             // -------------------------------
             Params params = paramsIn.read();
 
-            #ifndef __SYNTHESIS__
-            static int run_debug_idx = 0;
-            int local_run_idx = run_debug_idx++;
-            int debug_input_reads = 0;
-            int debug_weight_reads = 0;
-            int debug_output_writes = 0;
-            #endif
-
             // -------------------------------
             // HW5 Section 5: Flatten all inner loops into one INNER_LOOP
             // Total MAC iterations = IC1 × FX × FY × OX0 × OY0
@@ -145,68 +137,6 @@ public:
         uint_32 ramp = IC0 + OC0 - 1;
         uint_32 group_span = tile_size + ramp;
         uint_32 total_steps = groups * group_span;
-
-        // Reset per-run architectural state to avoid cross-tile/oc1 contamination.
-        #pragma hls_unroll yes
-        for (int pix = 0; pix < ACCUMULATION_BUFFER_SIZE; pix++) {
-            #pragma hls_unroll yes
-            for (int j = 0; j < OC0_MAX; j++) {
-                accumulation_buffer[pix][j].template set_val<AC_VAL_0>();
-                if (j == OC0 - 1) break;
-            }
-            if (pix == tile_size - 1) break;
-        }
-
-        #pragma hls_unroll yes
-        for (int i = 0; i < IC0_MAX; i++) {
-            #pragma hls_unroll yes
-            for (int j = 0; j < OC0_MAX + 1; j++) {
-                input_reg[i][j].template set_val<AC_VAL_0>();
-                if (j == OC0) break;
-            }
-            #pragma hls_unroll yes
-            for (int j = 0; j < OC0_MAX; j++) {
-                input_reg2[i][j].template set_val<AC_VAL_0>();
-                psum_reg2[i][j].template set_val<AC_VAL_0>();
-                if (j == OC0 - 1) break;
-            }
-            if (i == IC0 - 1) break;
-        }
-
-        #pragma hls_unroll yes
-        for (int i = 0; i < IC0_MAX + 1; i++) {
-            #pragma hls_unroll yes
-            for (int j = 0; j < OC0_MAX; j++) {
-                psum_reg[i][j].template set_val<AC_VAL_0>();
-                if (j == OC0 - 1) break;
-            }
-            if (i == IC0) break;
-        }
-
-        IDTYPE zero_input;
-        zero_input.template set_val<AC_VAL_0>();
-        ODTYPE zero_output;
-        zero_output.template set_val<AC_VAL_0>();
-
-        // Flush FIFO state so each run starts from a clean pipeline.
-        for (int flush = 0; flush < IC0_MAX; ++flush) {
-            #define FLUSH_INPUT_FIFO_BODY(z,i,unused) \
-                { IDTYPE BOOST_PP_CAT(flush_input_out_, i); \
-                  BOOST_PP_CAT(input_fifo_, i).run(zero_input, BOOST_PP_CAT(flush_input_out_, i)); }
-            REPEAT(FLUSH_INPUT_FIFO_BODY)
-
-            #define FLUSH_PSUM_FIFO_BODY(z,i,unused) \
-                { ODTYPE BOOST_PP_CAT(flush_psum_out_, i); \
-                  BOOST_PP_CAT(psum_fifo_, i).run(zero_output, BOOST_PP_CAT(flush_psum_out_, i)); }
-            REPEAT(FLUSH_PSUM_FIFO_BODY)
-
-            #define FLUSH_ACCUM_FIFO_BODY(z,i,unused) \
-                { ODTYPE BOOST_PP_CAT(flush_accum_out_, i); \
-                  BOOST_PP_CAT(accum_fifo_, i).run(zero_output, BOOST_PP_CAT(flush_accum_out_, i)); }
-            REPEAT(FLUSH_ACCUM_FIFO_BODY)
-
-            if (flush == IC0 - 1) break;
-        }
 
         #pragma hls_pipeline_init_interval 1
         LABEL(INNER_LOOP)
@@ -238,9 +168,6 @@ public:
                 for (int i = 0; i < IC0_MAX; i++) {
                     if (i < IC0) {
                         PackedInt<WEIGHT_PRECISION, OC0> w_row = weight.read();
-                        #ifndef __SYNTHESIS__
-                        debug_weight_reads++;
-                        #endif
                         #pragma hls_unroll yes
                         for (int j = 0; j < OC0_MAX; j++) {
                             weight_reg[i][j] = w_row.value[j];
@@ -257,9 +184,6 @@ public:
             PackedInt<INPUT_PRECISION, IC0> in_col;
             if (group_idx < groups && group_active) {
                 in_col = input.read();
-                #ifndef __SYNTHESIS__
-                debug_input_reads++;
-                #endif
             } else {
                 #pragma hls_unroll yes
                 for (int k = 0; k < IC0_MAX; k++) {
@@ -374,9 +298,6 @@ public:
 
                 if (group_idx == groups - 1) {
                     output.write(output_row);
-                    #ifndef __SYNTHESIS__
-                    debug_output_writes++;
-                    #endif
                 }
             }
 
@@ -396,21 +317,6 @@ public:
 
             // Input/output indices are derived from step; no manual counter update needed.
         }
-
-        #ifndef __SYNTHESIS__
-        int expected_input_reads = groups.to_int() * tile_size.to_int();
-        int expected_weight_reads = groups.to_int() * IC0;
-        int expected_output_writes = tile_size.to_int();
-        if (debug_input_reads != expected_input_reads ||
-            debug_weight_reads != expected_weight_reads ||
-            debug_output_writes != expected_output_writes) {
-            std::cout << "[CORE DEBUG] run=" << local_run_idx
-                      << " input_reads=" << debug_input_reads << " (exp " << expected_input_reads << ")"
-                      << " weight_reads=" << debug_weight_reads << " (exp " << expected_weight_reads << ")"
-                      << " output_writes=" << debug_output_writes << " (exp " << expected_output_writes << ")"
-                      << std::endl;
-        }
-        #endif
 
         }
     
