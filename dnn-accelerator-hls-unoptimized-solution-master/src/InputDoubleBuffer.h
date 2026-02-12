@@ -103,9 +103,9 @@ public:
                         FY: for (int fy = 0; fy < FY_MAX; fy++) {
                             FX: for (int fx = 0; fx < FX_MAX; fx++) {
                                 OY0: for (int oy0 = 0; oy0 < OY0_MAX; oy0++) {
-                                   // #pragma hls_pipeline_init_interval 1 
+                                    #pragma hls_pipeline_init_interval 1 
                                     OX0: for (int ox0 = 0; ox0 < OX0_MAX; ox0++) { 
-                                        uint_16 address = 
+                                        uint_16 address =
                                                 params.STRIDE * ox0 + fx +
                                                 (params.STRIDE * oy0 + fy) * IX0 +
                                                 IY0 * IX0 * ic1;
