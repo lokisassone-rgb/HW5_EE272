@@ -25,6 +25,7 @@ int run_layer(Params params){
     
     int errCnt = 0;
     int rand_init = 1;
+    int mismatch_by_group[OY1_MAX][OX1_MAX][OC1_MAX] = {0};
 
     printf("Generating Input\n");
  
@@ -164,6 +165,7 @@ int run_layer(Params params){
 
                 if((long long)output_ref[ro*params.OY0+p][co*params.OX0+i][koo*OC0+j] != (long long)out_value) {
                   errCnt++;
+                  mismatch_by_group[ro][co][koo]++;
                   if (errCnt < 10) {
                     printf("***ERROR***\n");
                           printf("output[%d][%d][%d] = %lld, ref = %lld\n",
@@ -178,6 +180,18 @@ int run_layer(Params params){
         } // for koo
       }  // for co
     }  // for ko
+
+    printf("\nMismatch breakdown by (ro,co,koo):\n");
+    for (int ro = 0; ro < params.OY1; ro++) {
+      for (int co = 0; co < params.OX1; co++) {
+        for (int koo = 0; koo < params.OC1; koo++) {
+          int cnt = mismatch_by_group[ro][co][koo];
+          if (cnt > 0) {
+            printf("  (ro=%d, co=%d, koo=%d): %d mismatches\n", ro, co, koo, cnt);
+          }
+        }
+      }
+    }
 
     dump_file.close();
     printf("Full output/ref dump written to conv_output_ref_dump.csv\n");
