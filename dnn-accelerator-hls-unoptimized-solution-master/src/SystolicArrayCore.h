@@ -16,8 +16,9 @@
 #include "ProcessingElement.h"
 #include "Fifo.h"
 
-// Define this macro for debug logging
+// Enable debug logging: 0 = off, 1 = on
 #define HLS_DEBUG 0
+
 #if HLS_DEBUG
 #ifndef __SYNTHESIS__
 #include <iostream>
@@ -39,69 +40,49 @@ void log_matrix(std::ofstream& file, T* data, int iteration, int side_length) {
 #endif
 #endif
 
-
 struct LoopIndices{
     uint_16 ic1_idx;
     uint_16 fx_idx;
     uint_16 fy_idx;
 };
 
-
-
 template <typename IDTYPE, typename WDTYPE, typename ODTYPE, int OC0, int IC0>
 class SystolicArrayCore
 {
-    #if HLS_DEBUG
-    #ifndef __SYNTHESIS__
-    // Create log file information
+#if HLS_DEBUG
+#ifndef __SYNTHESIS__
     std::ofstream input_file;
     std::ofstream weight_file;
     std::ofstream psum_file;
-    #endif
-    #endif
-
+#endif
+#endif
 
 public:
     SystolicArrayCore() {
-        // Initialize internal buffers to 0
-        for (int pix = 0; pix < ACCUMULATION_BUFFER_SIZE; pix++) {
-            for (int j = 0; j < OC0; j++) {
-                accumulation_buffer[pix][j] = 0;
-            }
-        }
+        // Initialize accumulation buffer
+        for (int pix = 0; pix < ACCUMULATION_BUFFER_SIZE; pix++)
+            for (int j = 0; j < OC0; j++) accumulation_buffer[pix][j] = 0;
 
+        // Initialize registers
         for (int i = 0; i < IC0; i++) {
             for (int j = 0; j < OC0+1; j++) input_reg[i][j] = 0;
             for (int j = 0; j < OC0; j++) input_reg2[i][j] = 0;
             for (int j = 0; j < OC0; j++) psum_reg2[i][j] = 0;
             for (int j = 0; j < OC0; j++) weight_reg[i][j] = 0;
         }
-
-        for (int i = 0; i < IC0+1; i++) {
+        for (int i = 0; i < IC0+1; i++)
             for (int j = 0; j < OC0; j++) psum_reg[i][j] = 0;
+
+#if HLS_DEBUG
+#ifndef __SYNTHESIS__
+        input_file.open("input_file");
+        weight_file.open("weight_file");
+        psum_file.open("psum_file");
+        if (!input_file.is_open() || !weight_file.is_open() || !psum_file.is_open()) {
+            std::cerr << "Failed to open log files!" << std::endl;
         }
-        #if HLS_DEBUG
-        #ifndef __SYNTHESIS__
-
-        // Creates filenames
-        std::string input_filename = "input_file";
-        std::string weight_filename = "weight_file";
-        std::string psum_filename = "psum_file";
-
-        // Opens log files when debugging
-        input_file.open(input_filename.c_str());
-        weight_file.open(weight_filename.c_str());
-        psum_file.open(psum_filename.c_str());
-        bool open_success = true;
-        open_success = open_success && input_file.is_open();
-        open_success = open_success && weight_file.is_open();
-        open_success = open_success && psum_file.is_open();
-
-        if (!open_success) {
-            std::cerr << "Failed to open one or more log files." << std::endl;
-        }
-        #endif
-        #endif
+#endif
+#endif
     }
 
 #pragma hls_design interface
@@ -112,30 +93,19 @@ void CCS_BLOCK(run)(
     ac_channel<PackedInt<OUTPUT_PRECISION, OC0> > &output,
     ac_channel<Params> &paramsIn)
 {
-    #ifndef __SYNTHESIS__
-    int debug_pixel_count = 0; // track first 5 pixels
-    #endif
+#ifndef __SYNTHESIS__
+    int debug_pixel_count = 0;
+#endif
 
-    #ifndef __SYNTHESIS__
-    while(paramsIn.available(1))
-    #endif
-    {
+    while(paramsIn.available(1)) {
         Params params = paramsIn.read();
-
         uint_32 mac_iters = params.IC1 * params.FX * params.FY * params.OX0 * params.OY0;
         uint_32 ramp = IC0 + OC0 - 2;
         uint_32 total_steps = mac_iters + ramp;
 
-        uint_16 ox0 = 0, oy0 = 0;
-        uint_16 fx  = 0, fy  = 0;
-        uint_16 ic1 = 0;
+        uint_16 ox0 = 0, oy0 = 0, fx = 0, fy = 0, ic1 = 0;
 
-        #pragma hls_pipeline_init_interval 1
-        LABEL(INNER_LOOP)
-        for (uint_32 step = 0;
-            step < IC1_MAX * FX_MAX * FY_MAX * OX0_MAX * OY0_MAX + IC0_MAX + OC0_MAX - 2;
-            ++step)
-        {
+        for (uint_32 step = 0; step < IC1_MAX * FX_MAX * FY_MAX * OX0_MAX * OY0_MAX + IC0_MAX + OC0_MAX - 2; ++step) {
             if (step == total_steps) break;
 
             uint_32 pix = oy0 * params.OX0 + ox0;
@@ -168,15 +138,15 @@ void CCS_BLOCK(run)(
             // -------------------------------
             PackedInt<INPUT_PRECISION, IC0> input_buf;
 
-            #define INPUT_FIFO_BODY(z,i,unused) \
-                IDTYPE BOOST_PP_CAT(input_fifo_output_, i); \
-                IDTYPE BOOST_PP_CAT(input_fifo_input_, i) = in_col.value[i]; \
-                BOOST_PP_CAT(input_fifo_, i).run( BOOST_PP_CAT(input_fifo_input_, i), BOOST_PP_CAT(input_fifo_output_, i) ); \
-                input_buf.value[i] = BOOST_PP_CAT(input_fifo_output_, i);
+#define INPUT_FIFO_BODY(z,i,unused) \
+            IDTYPE BOOST_PP_CAT(input_fifo_output_, i); \
+            IDTYPE BOOST_PP_CAT(input_fifo_input_, i) = in_col.value[i]; \
+            BOOST_PP_CAT(input_fifo_, i).run( BOOST_PP_CAT(input_fifo_input_, i), BOOST_PP_CAT(input_fifo_output_, i) ); \
+            input_buf.value[i] = BOOST_PP_CAT(input_fifo_output_, i);
 
             REPEAT(INPUT_FIFO_BODY)
 
-            #pragma hls_unroll yes
+#pragma hls_unroll yes
             for (int i = 0; i < IC0_MAX; i++) {
                 input_reg[i][0] = input_buf.value[i];
                 if (i == IC0 - 1) break;
@@ -203,51 +173,49 @@ void CCS_BLOCK(run)(
             }
 
             // -------------------------------
-            // Debug: log first 5 pixels
+            // Debug logging
             // -------------------------------
-            #ifndef __SYNTHESIS__
+#if HLS_DEBUG
+#ifndef __SYNTHESIS__
             if (debug_pixel_count < 5 && step < mac_iters) {
-                // Log input
                 input_file << "Pixel " << debug_pixel_count << " Input: ";
                 for (int i = 0; i < IC0; i++) input_file << int(in_col.value[i]) << " ";
                 input_file << "\n";
 
-                // Log weight
                 weight_file << "Pixel " << debug_pixel_count << " Weight: ";
-                for (int i = 0; i < IC0; i++) {
+                for (int i = 0; i < IC0; i++)
                     for (int j = 0; j < OC0; j++) weight_file << int(weight_reg[i][j]) << " ";
-                }
                 weight_file << "\n";
 
-                // Log psum_in
                 psum_file << "Pixel " << debug_pixel_count << " PSUM_in: ";
                 for (int j = 0; j < OC0; j++) psum_file << int(psum_buf.value[j]) << " ";
                 psum_file << "\n";
             }
-            #endif
+#endif
+#endif
 
             // -------------------------------
-            // Accum FIFOs and PE array (unchanged)
+            // Accum FIFOs and PE array
             // -------------------------------
             PackedInt<OUTPUT_PRECISION, OC0> output_buf;
 
-            #define ACCUM_FIFO_BODY(z,i,unused) \
-                ODTYPE BOOST_PP_CAT(psum_fifo_output_, i); \
-                ODTYPE BOOST_PP_CAT(psum_fifo_input_, i) = psum_buf.value[i]; \
-                BOOST_PP_CAT(psum_fifo_, i).run( BOOST_PP_CAT(psum_fifo_input_, i), BOOST_PP_CAT(psum_fifo_output_, i) ); \
-                output_buf.value[i] = BOOST_PP_CAT(psum_fifo_output_, i);
+#define ACCUM_FIFO_BODY(z,i,unused) \
+            ODTYPE BOOST_PP_CAT(psum_fifo_output_, i); \
+            ODTYPE BOOST_PP_CAT(psum_fifo_input_, i) = psum_buf.value[i]; \
+            BOOST_PP_CAT(psum_fifo_, i).run( BOOST_PP_CAT(psum_fifo_input_, i), BOOST_PP_CAT(psum_fifo_output_, i) ); \
+            output_buf.value[i] = BOOST_PP_CAT(psum_fifo_output_, i);
 
             REPEAT(ACCUM_FIFO_BODY)
 
-            #pragma hls_unroll yes
+#pragma hls_unroll yes
             for (int j = 0; j < OC0_MAX; j++) psum_reg[0][j] = output_buf.value[j];
 
-            #pragma hls_unroll yes
+#pragma hls_unroll yes
             for (int j = 0; j < OC0_MAX; j++) {
-                #pragma hls_unroll yes
+#pragma hls_unroll yes
                 for (int i = 0; i < IC0_MAX; i++) {
                     pe[i][j].run(input_reg[i][j], psum_reg[i][j], weight_reg[i][j],
-                                input_reg2[i][j], psum_reg2[i][j]);
+                                 input_reg2[i][j], psum_reg2[i][j]);
                     if (i == IC0 - 1) break;
                 }
                 if (j == OC0 - 1) break;
@@ -258,10 +226,10 @@ void CCS_BLOCK(run)(
             // -------------------------------
             PackedInt<OUTPUT_PRECISION, OC0> output_row;
 
-            #define FIFO_WRITE_BODY(z,i,unused) \
-                ODTYPE BOOST_PP_CAT(accum_fifo_output_, i); \
-                BOOST_PP_CAT(accum_fifo_, i).run( psum_reg[IC0][i], BOOST_PP_CAT(accum_fifo_output_, i) ); \
-                output_row.value[i] = BOOST_PP_CAT(accum_fifo_output_, i);
+#define FIFO_WRITE_BODY(z,i,unused) \
+            ODTYPE BOOST_PP_CAT(accum_fifo_output_, i); \
+            BOOST_PP_CAT(accum_fifo_, i).run( psum_reg[IC0][i], BOOST_PP_CAT(accum_fifo_output_, i) ); \
+            output_row.value[i] = BOOST_PP_CAT(accum_fifo_output_, i);
 
             REPEAT(FIFO_WRITE_BODY)
 
@@ -269,32 +237,33 @@ void CCS_BLOCK(run)(
             // Write back / output
             // -------------------------------
             if (step >= ramp && step < mac_iters + ramp) {
-                #pragma hls_unroll yes
+#pragma hls_unroll yes
                 for (int i = 0; i < OC0_MAX; i++) {
                     accumulation_buffer[pix][i] = output_row.value[i];
                     if (i == OC0 - 1) break;
                 }
 
-                if (ic1 == params.IC1-1 && fx  == params.FX-1  && fy  == params.FY-1) {
+                if (ic1 == params.IC1-1 && fx  == params.FX-1  && fy  == params.FY-1)
                     output.write(output_row);
-                }
 
-                #ifndef __SYNTHESIS__
+#if HLS_DEBUG
+#ifndef __SYNTHESIS__
                 if (debug_pixel_count < 5) {
                     psum_file << "Pixel " << debug_pixel_count << " PSUM_out / Output: ";
                     for (int j = 0; j < OC0; j++) psum_file << int(output_row.value[j]) << " ";
                     psum_file << "\n";
                     debug_pixel_count++;
                 }
-                #endif
+#endif
+#endif
             }
 
             // -------------------------------
-            // Shift registers and manual counter update
+            // Shift registers and counters
             // -------------------------------
-            #pragma hls_unroll yes
+#pragma hls_unroll yes
             for (int j = 0; j < OC0_MAX; j++) {
-                #pragma hls_unroll yes
+#pragma hls_unroll yes
                 for (int i = 0; i < IC0_MAX; i++) {
                     input_reg[i][j+1] = input_reg2[i][j];
                     psum_reg[i+1][j]  = psum_reg2[i][j];
@@ -308,18 +277,7 @@ void CCS_BLOCK(run)(
     } // paramsIn loop
 }
 
-
 private:
-    
-    // -------------------------------
-    // Create the following:
-    //  - PE array
-    //  - accumulation buffer
-    //  - weight registers
-    //  - input registers (two sets, one at the input of the PE and one at the output) 
-    //  - psum registers (two sets, one at the input of the PE and one at the output) 
-    // Your code starts here
-    // -------------------------------
     ProcessingElement<IDTYPE, WDTYPE, ODTYPE> pe[IC0][OC0];
 
     ODTYPE accumulation_buffer[ACCUMULATION_BUFFER_SIZE][OC0];
@@ -328,25 +286,17 @@ private:
     IDTYPE input_reg2[IC0][OC0];
     ODTYPE psum_reg[IC0+1][OC0];
     ODTYPE psum_reg2[IC0][OC0];
-    // -------------------------------
-    // Your code ends here
-    // -------------------------------
-    
 
 #define INPUT_FIFOS_INIT(z, i, unused) \
     Fifo<IDTYPE, i + 1> BOOST_PP_CAT(input_fifo_, i);
-
     REPEAT(INPUT_FIFOS_INIT)
 
 #define ACCUM_FIFOS_INIT(z, i, unused) \
     Fifo<ODTYPE, i + 1> BOOST_PP_CAT(psum_fifo_, i);
-
     REPEAT(ACCUM_FIFOS_INIT)
-    
 
 #define OUTPUT_FIFOS_INIT(z, i, unused) \
     Fifo<ODTYPE, OC0 - i> BOOST_PP_CAT(accum_fifo_, i);
-    
     REPEAT(OUTPUT_FIFOS_INIT)
 };
 
