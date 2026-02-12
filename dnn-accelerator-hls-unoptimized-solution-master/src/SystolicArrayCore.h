@@ -133,7 +133,7 @@ public:
            // -------------------------------
         // -------------------------------
         uint_32 mac_iters = params.IC1 * params.FX * params.FY * params.OX0 * params.OY0;
-        uint_32 ramp = IC0 + OC0 - 2;
+        uint_32 ramp = IC0 + OC0 - 1;
         uint_32 total_steps = mac_iters + ramp;
 
         // Manual loop counters
@@ -145,7 +145,7 @@ public:
         LABEL(INNER_LOOP)
         for (uint_32 step = 0;
             step < IC1_MAX * FX_MAX * FY_MAX * OX0_MAX * OY0_MAX
-                + IC0_MAX + OC0_MAX - 2;
+                + IC0_MAX + OC0_MAX - 1;
             ++step)
         {
             // Stop after required cycles
