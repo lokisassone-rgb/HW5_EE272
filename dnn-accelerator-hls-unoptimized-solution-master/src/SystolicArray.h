@@ -59,7 +59,7 @@ void run(ac_channel<Params> &paramsIn,
                     break;
                 }
             }
-            if (p == params.OX0 * params.OY0 - 1) {
+            if (p == params.OX1 * params.OY1 - 1) {
                 break;
             }
         }
