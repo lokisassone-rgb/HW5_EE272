@@ -36,7 +36,7 @@ public:
                                 ((params.OY0 - 1) * params.STRIDE + params.FY) * 
                                 params.IC1);
             #pragma hls_pipeline_init_interval 1
-            TILES: for (int t = 0; t < OX1_MAX * OY1_MAX; t++) {
+             TILES: for (int t = 0; t < params.OX1*params.OY1; t++) {
                 chanStruct<PackedInt<INPUT_PRECISION,IC0>,size> tmp;
 
                 // record one tile in buffer
@@ -57,9 +57,9 @@ public:
                 } // TILE
                 // write a tile
                 dout.write(tmp);
-                if (t == params.OX1 * params.OY1 - 1) {
-                    break; // no more tiles to read
-                }
+              //  if (t == params.OX1 * params.OY1 - 1) {
+              //      break; // no more tiles to read
+             //   }
             } // TILES
 
             // -------------------------------
@@ -92,7 +92,7 @@ public:
             uint_16 IY0 = (params.OY0 - 1) * params.STRIDE + params.FY;
 
             #pragma hls_pipeline_init_interval 1
-            TILES: for (int t = 0; t < OX1_MAX * OY1_MAX; t++) {
+            TILES: for (int t = 0; t < OX1 * OY1; t++) {
                 chanStruct<PackedInt<INPUT_PRECISION, IC0>,size> tmp;
                 
                 // read one tile from memory, and pass out one address at a time in the correct order
@@ -134,9 +134,9 @@ public:
                         break; // no more oc1 to read for this tile
                     }
                 } // OC1
-                if (t == params.OX1 * params.OY1 - 1) {
-                    break; // no more tiles to read
-                }
+              //  if (t == params.OX1 * params.OY1 - 1) {
+            //        break; // no more tiles to read
+              //  }
             } // TILES
 
             // -------------------------------
