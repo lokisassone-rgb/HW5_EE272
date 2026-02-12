@@ -105,38 +105,27 @@ public:
     }
 
 #pragma hls_design interface
-    #pragma hls_pipeline_init_interval 1
-    void CCS_BLOCK(run)(
-        ac_channel<PackedInt<INPUT_PRECISION, IC0> > &input, 
-        ac_channel<PackedInt<WEIGHT_PRECISION, OC0> > &weight, 
-        ac_channel<PackedInt<OUTPUT_PRECISION, OC0> > &output,
-        ac_channel<Params> &paramsIn)
+#pragma hls_pipeline_init_interval 1
+void CCS_BLOCK(run)(
+    ac_channel<PackedInt<INPUT_PRECISION, IC0> > &input, 
+    ac_channel<PackedInt<WEIGHT_PRECISION, OC0> > &weight, 
+    ac_channel<PackedInt<OUTPUT_PRECISION, OC0> > &output,
+    ac_channel<Params> &paramsIn)
+{
+    #ifndef __SYNTHESIS__
+    int debug_pixel_count = 0; // track first 5 pixels
+    #endif
+
+    #ifndef __SYNTHESIS__
+    while(paramsIn.available(1))
+    #endif
     {
-        #ifndef __SYNTHESIS__
-        // assert(params.OX0 * params.OY0 <= ACCUMULATION_BUFFER_SIZE);
-        #endif
+        Params params = paramsIn.read();
 
-        #ifndef __SYNTHESIS__
-        while(paramsIn.available(1))
-        #endif
-        {
-            // -------------------------------
-            // Read in the params from the channel
-            // -------------------------------
-            Params params = paramsIn.read();
-
-            // -------------------------------
-            // HW5 Section 5: Flatten all inner loops into one INNER_LOOP
-            // Total MAC iterations = IC1 × FX × FY × OX0 × OY0
-            // Total steps = mac_iters + ramp + flush
-            // -------------------------------
-           // -------------------------------
-        // -------------------------------
         uint_32 mac_iters = params.IC1 * params.FX * params.FY * params.OX0 * params.OY0;
         uint_32 ramp = IC0 + OC0 - 2;
         uint_32 total_steps = mac_iters + ramp;
 
-        // Manual loop counters
         uint_16 ox0 = 0, oy0 = 0;
         uint_16 fx  = 0, fy  = 0;
         uint_16 ic1 = 0;
@@ -144,18 +133,15 @@ public:
         #pragma hls_pipeline_init_interval 1
         LABEL(INNER_LOOP)
         for (uint_32 step = 0;
-            step < IC1_MAX * FX_MAX * FY_MAX * OX0_MAX * OY0_MAX
-                + IC0_MAX + OC0_MAX - 2;
+            step < IC1_MAX * FX_MAX * FY_MAX * OX0_MAX * OY0_MAX + IC0_MAX + OC0_MAX - 2;
             ++step)
         {
-            // Stop after required cycles
             if (step == total_steps) break;
 
-            // Compute pixel index (safe, cheap)
             uint_32 pix = oy0 * params.OX0 + ox0;
 
             // -------------------------------
-            // Load weights once per IC1×FX×FY
+            // Load weights
             // -------------------------------
             if (step < mac_iters && ox0 == 0 && oy0 == 0) {
                 for (int i = 0; i < IC0_MAX; i++) {
@@ -175,9 +161,7 @@ public:
             // Read input
             // -------------------------------
             PackedInt<INPUT_PRECISION, IC0> in_col;
-            if (step < mac_iters) {
-                in_col = input.read();
-            }
+            if (step < mac_iters) in_col = input.read();
 
             // -------------------------------
             // Input FIFOs
@@ -202,7 +186,6 @@ public:
             // Partial sum init / read
             // -------------------------------
             PackedInt<OUTPUT_PRECISION, OC0> psum_buf;
-
             if (step < mac_iters) {
                 if (ic1 == 0 && fx == 0 && fy == 0) {
                     #pragma hls_unroll yes
@@ -220,7 +203,31 @@ public:
             }
 
             // -------------------------------
-            // Accum FIFOs
+            // Debug: log first 5 pixels
+            // -------------------------------
+            #ifndef __SYNTHESIS__
+            if (debug_pixel_count < 5 && step < mac_iters) {
+                // Log input
+                input_file << "Pixel " << debug_pixel_count << " Input: ";
+                for (int i = 0; i < IC0; i++) input_file << int(in_col.value[i]) << " ";
+                input_file << "\n";
+
+                // Log weight
+                weight_file << "Pixel " << debug_pixel_count << " Weight: ";
+                for (int i = 0; i < IC0; i++) {
+                    for (int j = 0; j < OC0; j++) weight_file << int(weight_reg[i][j]) << " ";
+                }
+                weight_file << "\n";
+
+                // Log psum_in
+                psum_file << "Pixel " << debug_pixel_count << " PSUM_in: ";
+                for (int j = 0; j < OC0; j++) psum_file << int(psum_buf.value[j]) << " ";
+                psum_file << "\n";
+            }
+            #endif
+
+            // -------------------------------
+            // Accum FIFOs and PE array (unchanged)
             // -------------------------------
             PackedInt<OUTPUT_PRECISION, OC0> output_buf;
 
@@ -233,20 +240,13 @@ public:
             REPEAT(ACCUM_FIFO_BODY)
 
             #pragma hls_unroll yes
-            for (int j = 0; j < OC0_MAX; j++) {
-                psum_reg[0][j] = output_buf.value[j];
-                if (j == OC0 - 1) break;
-            }
+            for (int j = 0; j < OC0_MAX; j++) psum_reg[0][j] = output_buf.value[j];
 
-            // -------------------------------
-            // Run PE array
-            // -------------------------------
             #pragma hls_unroll yes
             for (int j = 0; j < OC0_MAX; j++) {
                 #pragma hls_unroll yes
                 for (int i = 0; i < IC0_MAX; i++) {
-                    pe[i][j].run(input_reg[i][j], psum_reg[i][j],
-                                weight_reg[i][j],
+                    pe[i][j].run(input_reg[i][j], psum_reg[i][j], weight_reg[i][j],
                                 input_reg2[i][j], psum_reg2[i][j]);
                     if (i == IC0 - 1) break;
                 }
@@ -275,15 +275,22 @@ public:
                     if (i == OC0 - 1) break;
                 }
 
-                if (ic1 == params.IC1-1 &&
-                    fx  == params.FX-1  &&
-                    fy  == params.FY-1) {
+                if (ic1 == params.IC1-1 && fx  == params.FX-1  && fy  == params.FY-1) {
                     output.write(output_row);
                 }
+
+                #ifndef __SYNTHESIS__
+                if (debug_pixel_count < 5) {
+                    psum_file << "Pixel " << debug_pixel_count << " PSUM_out / Output: ";
+                    for (int j = 0; j < OC0; j++) psum_file << int(output_row.value[j]) << " ";
+                    psum_file << "\n";
+                    debug_pixel_count++;
+                }
+                #endif
             }
 
             // -------------------------------
-            // Shift registers
+            // Shift registers and manual counter update
             // -------------------------------
             #pragma hls_unroll yes
             for (int j = 0; j < OC0_MAX; j++) {
@@ -296,29 +303,11 @@ public:
                 if (j == OC0 - 1) break;
             }
 
-            // -------------------------------
-            // Manual counter update (END)
-            // -------------------------------
-            if (++ox0 == params.OX0) {
-                ox0 = 0;
-                if (++oy0 == params.OY0) {
-                    oy0 = 0;
-                    if (++fy == params.FY) {
-                        fy = 0;
-                        if (++fx == params.FX) {
-                            fx = 0;
-                            ic1++;
-                        }
-                    }
-                }
-            }
-        }
+            if (++ox0 == params.OX0) { ox0 = 0; if (++oy0 == params.OY0) { oy0 = 0; if (++fy == params.FY) { fy = 0; if (++fx == params.FX) { fx = 0; ic1++; }}}}
+        } // INNER_LOOP
+    } // paramsIn loop
+}
 
-        }
-    
-        // Debug example:
-        // printf("outputs written: %d\n", output.size());
-    }
 
 private:
     
