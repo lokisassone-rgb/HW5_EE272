@@ -134,8 +134,70 @@ public:
         // -------------------------------
         uint_32 tile_size = params.OX0 * params.OY0;
         uint_32 mac_iters = params.IC1 * params.FX * params.FY * tile_size;
-        uint_32 ramp = IC0 + OC0;
+        uint_32 ramp = IC0 + OC0 - 1;
         uint_32 total_steps = mac_iters + ramp;
+
+        // Reset per-run architectural state to avoid cross-tile/oc1 contamination.
+        #pragma hls_unroll yes
+        for (int pix = 0; pix < ACCUMULATION_BUFFER_SIZE; pix++) {
+            #pragma hls_unroll yes
+            for (int j = 0; j < OC0_MAX; j++) {
+                accumulation_buffer[pix][j].template set_val<AC_VAL_0>();
+                if (j == OC0 - 1) break;
+            }
+            if (pix == tile_size - 1) break;
+        }
+
+        #pragma hls_unroll yes
+        for (int i = 0; i < IC0_MAX; i++) {
+            #pragma hls_unroll yes
+            for (int j = 0; j < OC0_MAX + 1; j++) {
+                input_reg[i][j].template set_val<AC_VAL_0>();
+                if (j == OC0) break;
+            }
+            #pragma hls_unroll yes
+            for (int j = 0; j < OC0_MAX; j++) {
+                input_reg2[i][j].template set_val<AC_VAL_0>();
+                psum_reg2[i][j].template set_val<AC_VAL_0>();
+                if (j == OC0 - 1) break;
+            }
+            if (i == IC0 - 1) break;
+        }
+
+        #pragma hls_unroll yes
+        for (int i = 0; i < IC0_MAX + 1; i++) {
+            #pragma hls_unroll yes
+            for (int j = 0; j < OC0_MAX; j++) {
+                psum_reg[i][j].template set_val<AC_VAL_0>();
+                if (j == OC0 - 1) break;
+            }
+            if (i == IC0) break;
+        }
+
+        IDTYPE zero_input;
+        zero_input.template set_val<AC_VAL_0>();
+        ODTYPE zero_output;
+        zero_output.template set_val<AC_VAL_0>();
+
+        // Flush FIFO state so each run starts from a clean pipeline.
+        for (int flush = 0; flush < IC0_MAX; ++flush) {
+            #define FLUSH_INPUT_FIFO_BODY(z,i,unused) \
+                { IDTYPE BOOST_PP_CAT(flush_input_out_, i); \
+                  BOOST_PP_CAT(input_fifo_, i).run(zero_input, BOOST_PP_CAT(flush_input_out_, i)); }
+            REPEAT(FLUSH_INPUT_FIFO_BODY)
+
+            #define FLUSH_PSUM_FIFO_BODY(z,i,unused) \
+                { ODTYPE BOOST_PP_CAT(flush_psum_out_, i); \
+                  BOOST_PP_CAT(psum_fifo_, i).run(zero_output, BOOST_PP_CAT(flush_psum_out_, i)); }
+            REPEAT(FLUSH_PSUM_FIFO_BODY)
+
+            #define FLUSH_ACCUM_FIFO_BODY(z,i,unused) \
+                { ODTYPE BOOST_PP_CAT(flush_accum_out_, i); \
+                  BOOST_PP_CAT(accum_fifo_, i).run(zero_output, BOOST_PP_CAT(flush_accum_out_, i)); }
+            REPEAT(FLUSH_ACCUM_FIFO_BODY)
+
+            if (flush == IC0 - 1) break;
+        }
 
         #pragma hls_pipeline_init_interval 1
         LABEL(INNER_LOOP)
