@@ -134,7 +134,7 @@ public:
         // -------------------------------
         uint_32 tile_size = params.OX0 * params.OY0;
         uint_32 mac_iters = params.IC1 * params.FX * params.FY * tile_size;
-        uint_32 ramp = IC0 + OC0 - 1;
+        uint_32 ramp = IC0 + OC0 - 2;
         uint_32 total_steps = mac_iters + ramp;
 
         // Reset per-run architectural state to avoid cross-tile/oc1 contamination.
