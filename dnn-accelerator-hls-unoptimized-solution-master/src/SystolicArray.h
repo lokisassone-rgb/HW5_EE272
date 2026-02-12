@@ -34,6 +34,7 @@ void run(ac_channel<Params> &paramsIn,
             LABEL(OC2) for(uint_16 oc1 = 0; oc1 < OC1_MAX; ++oc1){ // loop over kernel tiles    
                 LABEL(co) for (uint_16 ic1 = 0; ic1 < IC1_MAX; ++ic1) { // loop over channel tile
                     LABEL(winx) for (uint_16 fx = 0; fx < FX_MAX; ++fx) { // loop over filter window x
+                        #pragma hls_pipeline_init_interval 1
                         LABEL(winy) for (uint_16 fy = 0; fy < FY_MAX; ++fy) { // loop over filter window y
                                 LoopIndices loopIndices = {
                                     ic1, 
