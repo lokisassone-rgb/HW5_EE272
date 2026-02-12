@@ -35,7 +35,7 @@ public:
             ac_int<ac::log2_ceil<size+1>::val, false> tileSize = (((params.OX0 - 1) * params.STRIDE + params.FX) * 
                                 ((params.OY0 - 1) * params.STRIDE + params.FY) * 
                                 params.IC1);
-            
+            #pragma hls_pipeline_init_interval 1
             TILES: for (int t = 0; t < OX1_MAX * OY1_MAX; t++) {
                 chanStruct<PackedInt<INPUT_PRECISION,IC0>,size> tmp;
 
@@ -45,7 +45,7 @@ public:
                     // each packet contains 4 values, pack IC0 tgt into one row
                     for (int j = 0; j < IC0; j=j+4) {
                         PackedInt<INPUT_PRECISION, 4> packet = din.read();
-
+                        #pragma hls_unroll yes
                         for (int k = 0; k < 4; k++) {
                             memCol.value[j+k] = packet.value[k];
                         }
@@ -88,6 +88,7 @@ public:
             uint_16 IX0 = (params.OX0 - 1) * params.STRIDE + params.FX;
             uint_16 IY0 = (params.OY0 - 1) * params.STRIDE + params.FY;
 
+            #pragma hls_pipeline_init_interval 1
             TILES: for (int t = 0; t < OX1_MAX * OY1_MAX; t++) {
                 chanStruct<PackedInt<INPUT_PRECISION, IC0>,size> tmp;
                 
@@ -98,7 +99,8 @@ public:
                     IC1: for (int ic1 = 0; ic1 < IC1_MAX; ic1++) {
                         FY: for (int fy = 0; fy < FY_MAX; fy++) {
                             FX: for (int fx = 0; fx < FX_MAX; fx++) {
-                                OY0: for (int oy0 = 0; oy0 < OY0_MAX; oy0++) { 
+                                OY0: for (int oy0 = 0; oy0 < OY0_MAX; oy0++) {
+                                    #pragma hls_pipeline_init_interval 1 
                                     OX0: for (int ox0 = 0; ox0 < OX0_MAX; ox0++) { 
                                         uint_16 address = 
                                                 params.STRIDE * ox0 + fx +
