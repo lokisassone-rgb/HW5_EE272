@@ -37,7 +37,7 @@ template <typename T>
         int FX  = params.FX;
         int OY0 = params.OY0;
         int OX0 = params.OX0;
-        int total_iters = IC1 * FY * FX * OY0 * OX0;
+        int total_iters = IC1 * FY * FX * OY0 * OX0 + IC0_MAX + OC0_MAX - 1;
 
         #pragma hls_pipeline_init_interval 1
         for (int flat_idx = 0; flat_idx < total_iters; ++flat_idx) {
