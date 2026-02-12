@@ -177,6 +177,12 @@ public:
             PackedInt<INPUT_PRECISION, IC0> in_col;
             if (step < mac_iters) {
                 in_col = input.read();
+            } else {
+                #pragma hls_unroll yes
+                for (int k = 0; k < IC0_MAX; k++) {
+                    in_col.value[k].template set_val<AC_VAL_0>();
+                    if (k == IC0 - 1) break;
+                }
             }
 
             // -------------------------------
@@ -216,6 +222,12 @@ public:
                         psum_buf.value[j] = accumulation_buffer[pix][j];
                         if (j == OC0 - 1) break;
                     }
+                }
+            } else {
+                #pragma hls_unroll yes
+                for (int j = 0; j < OC0_MAX; j++) {
+                    psum_buf.value[j].template set_val<AC_VAL_0>();
+                    if (j == OC0 - 1) break;
                 }
             }
 
@@ -269,15 +281,26 @@ public:
             // Write back / output
             // -------------------------------
             if (step >= ramp && step < mac_iters + ramp) {
+                uint_32 output_mac = step - ramp;
+                uint_32 output_pix = output_mac % (params.OX0 * params.OY0);
+                uint_32 output_group = output_mac / (params.OX0 * params.OY0);
+
+                uint_32 tmp_out = output_group;
+                uint_16 out_fx = tmp_out % params.FX;
+                tmp_out /= params.FX;
+                uint_16 out_fy = tmp_out % params.FY;
+                tmp_out /= params.FY;
+                uint_16 out_ic1 = tmp_out;
+
                 #pragma hls_unroll yes
                 for (int i = 0; i < OC0_MAX; i++) {
-                    accumulation_buffer[pix][i] = output_row.value[i];
+                    accumulation_buffer[output_pix][i] = output_row.value[i];
                     if (i == OC0 - 1) break;
                 }
 
-                if (ic1 == params.IC1-1 &&
-                    fx  == params.FX-1  &&
-                    fy  == params.FY-1) {
+                if (out_ic1 == params.IC1-1 &&
+                    out_fy  == params.FY-1  &&
+                    out_fx  == params.FX-1) {
                     output.write(output_row);
                 }
             }
