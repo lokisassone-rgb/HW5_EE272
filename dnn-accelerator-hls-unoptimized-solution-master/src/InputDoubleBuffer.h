@@ -92,7 +92,7 @@ public:
             uint_16 IY0 = (params.OY0 - 1) * params.STRIDE + params.FY;
 
             #pragma hls_pipeline_init_interval 1
-            TILES: for (int t = 0; t < OX1 * OY1; t++) {
+            TILES: for (int t = 0; t < params.OX1*params.OY1; t++) {
                 chanStruct<PackedInt<INPUT_PRECISION, IC0>,size> tmp;
                 
                 // read one tile from memory, and pass out one address at a time in the correct order
