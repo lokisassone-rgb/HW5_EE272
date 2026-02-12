@@ -88,6 +88,7 @@ public:
     }
 
 #pragma hls_design interface
+    #pragma hls_pipeline_init_interval 1
     void CCS_BLOCK(run)(
         ac_channel<PackedInt<INPUT_PRECISION, IC0> > &input, 
         ac_channel<PackedInt<WEIGHT_PRECISION, OC0> > &weight, 
@@ -126,7 +127,7 @@ public:
             // Your code starts here
             // -------------------------------
             uint_16 step_bound = OC0+IC0+(params.OX0*params.OY0)-1;
-            #pragma hls_pipeline_init_interval 1
+            //#pragma hls_pipeline_init_interval 1
             LABEL(INNER_LOOP) for (uint_16 step = 0; step < OC0_MAX + IC0_MAX + OX0_MAX * OY0_MAX - 1; ++step) { // loop inside each image tile
             // -------------------------------
             // Your code ends here 
