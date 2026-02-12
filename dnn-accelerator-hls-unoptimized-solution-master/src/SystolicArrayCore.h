@@ -140,26 +140,20 @@ public:
 
         #pragma hls_pipeline_init_interval 1
         LABEL(INNER_LOOP)
+        uint_32 group_idx = 0;
+        uint_32 in_group_step = 0;
+        uint_16 in_ic1 = 0;
+        uint_16 in_fy = 0;
+        uint_16 in_fx = 0;
         for (uint_32 step = 0;
             step < IC1_MAX * FX_MAX * FY_MAX * (OX0_MAX * OY0_MAX + IC0_MAX + OC0_MAX - 1);
             ++step)
         {
             // Stop after required cycles
             if (step == total_steps) break;
-
-            uint_32 group_idx = step / group_span;
-            uint_32 in_group_step = step % group_span;
             bool group_active = in_group_step < tile_size;
 
             uint_32 input_pix = in_group_step;
-            uint_32 input_group = group_idx;
-
-            uint_32 tmp_in = input_group;
-            uint_16 in_fx = tmp_in % params.FX;
-            tmp_in /= params.FX;
-            uint_16 in_fy = tmp_in % params.FY;
-            tmp_in /= params.FY;
-            uint_16 in_ic1 = tmp_in;
 
             // -------------------------------
             // Load weights once per IC1×FX×FY
@@ -313,6 +307,25 @@ public:
                     if (i == IC0 - 1) break;
                 }
                 if (j == OC0 - 1) break;
+            }
+
+            if (in_group_step == group_span - 1) {
+                in_group_step = 0;
+                group_idx++;
+
+                if (in_fx == params.FX - 1) {
+                    in_fx = 0;
+                    if (in_fy == params.FY - 1) {
+                        in_fy = 0;
+                        in_ic1++;
+                    } else {
+                        in_fy++;
+                    }
+                } else {
+                    in_fx++;
+                }
+            } else {
+                in_group_step++;
             }
 
             // Input/output indices are derived from step; no manual counter update needed.
