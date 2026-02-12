@@ -157,8 +157,12 @@ public:
                 // Note: you don't read in any inputs during the flush time
                 // Your code starts here
                 // -------------------------------
-                if (step < (params.OX0*params.OY0)) {        
+                if (step < (OX0_MAX*OY0_MAX)) {        
                     in_col = input.read();
+                    
+                    if (step == params.OX0*params.OY0 - 1) {
+                        break;
+                    }
                 }
                 // -------------------------------
                 // Your code ends here
@@ -201,7 +205,7 @@ public:
                 // Depending on the loop index, the partial output will be 0 or a value from the accumulation buffer
                 // Your code starts here
                 // -------------------------------
-                if(step < (params.OX0*params.OY0)){
+                if(step < (OX0_MAX*OY0_MAX)){
                     // initial partial output of 0
                     if(loopIndices.ic1_idx == 0 && loopIndices.fx_idx == 0 && loopIndices.fy_idx == 0) {
                         #pragma hls_unroll yes
@@ -214,6 +218,9 @@ public:
                         for(int j = 0; j < OC0; j++){
                             psum_buf.value[j] = accumulation_buffer[step][j];
                         }
+                    }
+                    if (step == params.OX0*params.OY0 - 1) {
+                        break;
                     }
                 }
                 // -------------------------------
