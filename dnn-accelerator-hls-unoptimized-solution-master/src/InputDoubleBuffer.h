@@ -40,7 +40,6 @@ public:
                 chanStruct<PackedInt<INPUT_PRECISION,IC0>,size> tmp;
 
                 // record one tile in buffer
-                #pragma hls_pipeline_init_interval 1
                 TILE: for (int i = 0; i < tileSize; i++) {
                     PackedInt<INPUT_PRECISION, IC0> memCol;  // one column in the memory
                     // each packet contains 4 values, pack IC0 tgt into one row
