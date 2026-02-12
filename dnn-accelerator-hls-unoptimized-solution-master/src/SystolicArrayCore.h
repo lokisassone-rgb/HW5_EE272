@@ -63,23 +63,6 @@ class SystolicArrayCore
 
 public:
     SystolicArrayCore() {
-        // Initialize internal buffers to 0
-        for (int pix = 0; pix < ACCUMULATION_BUFFER_SIZE; pix++) {
-            for (int j = 0; j < OC0; j++) {
-                accumulation_buffer[pix][j] = 0;
-            }
-        }
-
-        for (int i = 0; i < IC0; i++) {
-            for (int j = 0; j < OC0+1; j++) input_reg[i][j] = 0;
-            for (int j = 0; j < OC0; j++) input_reg2[i][j] = 0;
-            for (int j = 0; j < OC0; j++) psum_reg2[i][j] = 0;
-            for (int j = 0; j < OC0; j++) weight_reg[i][j] = 0;
-        }
-
-        for (int i = 0; i < IC0+1; i++) {
-            for (int j = 0; j < OC0; j++) psum_reg[i][j] = 0;
-        }
         #if HLS_DEBUG
         #ifndef __SYNTHESIS__
 
@@ -110,210 +93,269 @@ public:
         ac_channel<PackedInt<INPUT_PRECISION, IC0> > &input, 
         ac_channel<PackedInt<WEIGHT_PRECISION, OC0> > &weight, 
         ac_channel<PackedInt<OUTPUT_PRECISION, OC0> > &output,
-        ac_channel<Params> &paramsIn)
+        ac_channel<Params> &paramsIn,
+        ac_channel<LoopIndices> &loopIndicesIn)
     {
         #ifndef __SYNTHESIS__
         // assert(params.OX0 * params.OY0 <= ACCUMULATION_BUFFER_SIZE);
+        // Debug example:
+        // printf("paramsIn channel size: %d\n", paramsIn.size());
+        // printf("loopIndicesIn channel size: %d\n", loopIndicesIn.size());
+        // printf("weight channel size: %d\n", weight.size());
+        // printf("input channel size: %d\n\n", input.size());
         #endif
 
         #ifndef __SYNTHESIS__
-        while(paramsIn.available(1))
+        while(paramsIn.available(1) && loopIndicesIn.available(1) && input.available(paramsIn[0].OX0*paramsIn[0].OY0) && weight.available(IC0))
         #endif
         {
             // -------------------------------
-            // Read in the params from the channel
+            // Read in the params and loop indices from the channel
+            // Your code starts here
             // -------------------------------
             Params params = paramsIn.read();
+            LoopIndices loopIndices = loopIndicesIn.read();
+            // -------------------------------
+            // Your code ends here
+            // -------------------------------
+
 
             // -------------------------------
-            // HW5 Section 5: Flatten all inner loops into one INNER_LOOP
-            // Total MAC iterations = IC1 × FX × FY × OX0 × OY0
-            // Total steps = mac_iters + ramp + flush
+            // Create a loop for a "run" of the systolic array.
+            // The number of steps in a run of the systolic array is equal to:
+            // the ramp-up time + number of pixels + flush time
+            // Your code starts here
             // -------------------------------
-           // -------------------------------
-        // -------------------------------
-        uint_32 mac_iters = params.IC1 * params.FX * params.FY * params.OX0 * params.OY0;
-        uint_32 ramp = IC0 + OC0 - 1;
-        uint_32 total_steps = mac_iters + ramp;
-
-        // Manual loop counters
-        uint_16 ox0 = 0, oy0 = 0;
-        uint_16 fx  = 0, fy  = 0;
-        uint_16 ic1 = 0;
-
-        #pragma hls_pipeline_init_interval 1
-        LABEL(INNER_LOOP)
-        for (uint_32 step = 0;
-            step < IC1_MAX * FX_MAX * FY_MAX * OX0_MAX * OY0_MAX
-                + IC0_MAX + OC0_MAX - 1;
-            ++step)
-        {
-            // Stop after required cycles
-            if (step == total_steps) break;
-
-            // Compute pixel index (safe, cheap)
-            uint_32 pix = oy0 * params.OX0 + ox0;
-
+            uint_16 step_bound = OC0+IC0+(params.OX0*params.OY0)-1;
+            //#pragma hls_pipeline_init_interval 1
+            LABEL(INNER_LOOP) for (uint_16 step = 0; step < OC0_MAX + IC0_MAX + OX0_MAX * OY0_MAX - 1; ++step) { // loop inside each image tile
             // -------------------------------
-            // Load weights once per IC1×FX×FY
+            // Your code ends here 
+            // You should now be in the body of the loop
             // -------------------------------
-            if (step < mac_iters && ox0 == 0 && oy0 == 0) {
-                for (int i = 0; i < IC0_MAX; i++) {
-                    if (i < IC0) {
-                        PackedInt<WEIGHT_PRECISION, OC0> w_row = weight.read();
+
+                // -------------------------------
+                // If you are in the ramp up time, read in weights from the channel
+                // and store it in the weights array
+                // Your code starts here
+                // -------------------------------
+                if (step < IC0) {       
+                    PackedInt<WEIGHT_PRECISION, OC0> w_row = weight.read();
+                    #pragma hls_unroll yes
+                    for(int j = 0; j < OC0_MAX; j++){
+                            weight_reg[step][j] = w_row.value[j];
+                            if (j == OC0 - 1){
+                                break;
+                            }
+                    }
+                }
+                // -------------------------------
+                // Your code ends here
+                // -------------------------------
+                
+                
+                PackedInt<INPUT_PRECISION, IC0> in_col;
+
+                // -------------------------------
+                // Read inputs from the channel and store in the variable in_col
+                // Note: you don't read in any inputs during the flush time
+                // Your code starts here
+                // -------------------------------
+                if (step < (params.OX0*params.OY0)) {        
+                    in_col = input.read();
+                }
+                // -------------------------------
+                // Your code ends here
+                // -------------------------------
+
+                // Debug example:        
+                // printf("in_col: %s\n", in_col.to_string().c_str());
+
+
+                /*
+                 * FIFOs for inputs coming in to the systolic array
+                 * assign values to in_col, and the skewed version will be in input_buf
+                 */
+                PackedInt<INPUT_PRECISION, IC0> input_buf;
+
+                #define INPUT_FIFO_BODY(z,i,unused) \
+                    IDTYPE BOOST_PP_CAT(input_fifo_output_, i); \
+                    IDTYPE BOOST_PP_CAT(input_fifo_input_, i) = in_col.value[i]; \
+                    BOOST_PP_CAT(input_fifo_, i).run( BOOST_PP_CAT(input_fifo_input_, i) , BOOST_PP_CAT(input_fifo_output_, i) ); \
+                    input_buf.value[i] = BOOST_PP_CAT(input_fifo_output_, i);
+                
+                REPEAT(INPUT_FIFO_BODY)
+
+                // -------------------------------
+                // Assign values from input_buf into the registers for the first column of PEs
+                // Your code starts here
+                // -------------------------------
+                #pragma hls_unroll yes
+                LABEL(INIT_IN) for(int i = 0; i < IC0_MAX; ++i) {
+                    input_reg[i][0] = input_buf.value[i];
+                    if (i == IC0 - 1) {
+                        break;
+                    }
+                }
+                // -------------------------------
+                // Your code ends here
+                // -------------------------------
+
+                PackedInt<OUTPUT_PRECISION, OC0> psum_buf;
+                
+                // -------------------------------
+                // Set partial outputs for the array to psum_buf.
+                // Depending on the loop index, the partial output will be 0 or a value from the accumulation buffer
+                // Your code starts here
+                // -------------------------------
+                if(step < (params.OX0*params.OY0)){
+                    // initial partial output of 0
+                    if(loopIndices.ic1_idx == 0 && loopIndices.fx_idx == 0 && loopIndices.fy_idx == 0) {
                         #pragma hls_unroll yes
-                        for (int j = 0; j < OC0_MAX; j++) {
-                            weight_reg[i][j] = w_row.value[j];
-                            if (j == OC0 - 1) break;
+                        for(int j = 0; j < OC0_MAX; j++){
+                            psum_buf.value[j].template set_val<AC_VAL_0>();
+                            if (j == OC0 - 1) {
+                                break;
+                            }
                         }
                     }
-                    if (i == IC0 - 1) break;
-                }
-            }
-
-            // -------------------------------
-            // Read input
-            // -------------------------------
-            PackedInt<INPUT_PRECISION, IC0> in_col;
-            if (step < mac_iters) {
-                in_col = input.read();
-            }
-
-            // -------------------------------
-            // Input FIFOs
-            // -------------------------------
-            PackedInt<INPUT_PRECISION, IC0> input_buf;
-
-            #define INPUT_FIFO_BODY(z,i,unused) \
-                IDTYPE BOOST_PP_CAT(input_fifo_output_, i); \
-                IDTYPE BOOST_PP_CAT(input_fifo_input_, i) = in_col.value[i]; \
-                BOOST_PP_CAT(input_fifo_, i).run( BOOST_PP_CAT(input_fifo_input_, i), BOOST_PP_CAT(input_fifo_output_, i) ); \
-                input_buf.value[i] = BOOST_PP_CAT(input_fifo_output_, i);
-
-            REPEAT(INPUT_FIFO_BODY)
-
-            #pragma hls_unroll yes
-            for (int i = 0; i < IC0_MAX; i++) {
-                input_reg[i][0] = input_buf.value[i];
-                if (i == IC0 - 1) break;
-            }
-
-            // -------------------------------
-            // Partial sum init / read
-            // -------------------------------
-            PackedInt<OUTPUT_PRECISION, OC0> psum_buf;
-
-            if (step < mac_iters) {
-                if (ic1 == 0 && fx == 0 && fy == 0) {
-                    #pragma hls_unroll yes
-                    for (int j = 0; j < OC0_MAX; j++) {
-                        psum_buf.value[j].template set_val<AC_VAL_0>();
-                        if (j == OC0 - 1) break;
-                    }
-                } else {
-                    #pragma hls_unroll yes
-                    for (int j = 0; j < OC0_MAX; j++) {
-                        psum_buf.value[j] = accumulation_buffer[pix][j];
-                        if (j == OC0 - 1) break;
-                    }
-                }
-            }
-
-            // -------------------------------
-            // Accum FIFOs
-            // -------------------------------
-            PackedInt<OUTPUT_PRECISION, OC0> output_buf;
-
-            #define ACCUM_FIFO_BODY(z,i,unused) \
-                ODTYPE BOOST_PP_CAT(psum_fifo_output_, i); \
-                ODTYPE BOOST_PP_CAT(psum_fifo_input_, i) = psum_buf.value[i]; \
-                BOOST_PP_CAT(psum_fifo_, i).run( BOOST_PP_CAT(psum_fifo_input_, i), BOOST_PP_CAT(psum_fifo_output_, i) ); \
-                output_buf.value[i] = BOOST_PP_CAT(psum_fifo_output_, i);
-
-            REPEAT(ACCUM_FIFO_BODY)
-
-            #pragma hls_unroll yes
-            for (int j = 0; j < OC0_MAX; j++) {
-                psum_reg[0][j] = output_buf.value[j];
-                if (j == OC0 - 1) break;
-            }
-
-            // -------------------------------
-            // Run PE array
-            // -------------------------------
-            #pragma hls_unroll yes
-            for (int j = 0; j < OC0_MAX; j++) {
-                #pragma hls_unroll yes
-                for (int i = 0; i < IC0_MAX; i++) {
-                    pe[i][j].run(input_reg[i][j], psum_reg[i][j],
-                                weight_reg[i][j],
-                                input_reg2[i][j], psum_reg2[i][j]);
-                    if (i == IC0 - 1) break;
-                }
-                if (j == OC0 - 1) break;
-            }
-
-            // -------------------------------
-            // Output FIFOs
-            // -------------------------------
-            PackedInt<OUTPUT_PRECISION, OC0> output_row;
-
-            #define FIFO_WRITE_BODY(z,i,unused) \
-                ODTYPE BOOST_PP_CAT(accum_fifo_output_, i); \
-                BOOST_PP_CAT(accum_fifo_, i).run( psum_reg[IC0][i], BOOST_PP_CAT(accum_fifo_output_, i) ); \
-                output_row.value[i] = BOOST_PP_CAT(accum_fifo_output_, i);
-
-            REPEAT(FIFO_WRITE_BODY)
-
-            // -------------------------------
-            // Write back / output
-            // -------------------------------
-            if (step >= ramp && step < mac_iters + ramp) {
-                #pragma hls_unroll yes
-                for (int i = 0; i < OC0_MAX; i++) {
-                    accumulation_buffer[pix][i] = output_row.value[i];
-                    if (i == OC0 - 1) break;
-                }
-
-                if (ic1 == params.IC1-1 &&
-                    fx  == params.FX-1  &&
-                    fy  == params.FY-1) {
-                    output.write(output_row);
-                }
-            }
-
-            // -------------------------------
-            // Shift registers
-            // -------------------------------
-            #pragma hls_unroll yes
-            for (int j = 0; j < OC0_MAX; j++) {
-                #pragma hls_unroll yes
-                for (int i = 0; i < IC0_MAX; i++) {
-                    input_reg[i][j+1] = input_reg2[i][j];
-                    psum_reg[i+1][j]  = psum_reg2[i][j];
-                    if (i == IC0 - 1) break;
-                }
-                if (j == OC0 - 1) break;
-            }
-
-            // -------------------------------
-            // Manual counter update (END)
-            // -------------------------------
-            if (++ox0 == params.OX0) {
-                ox0 = 0;
-                if (++oy0 == params.OY0) {
-                    oy0 = 0;
-                    if (++fy == params.FY) {
-                        fy = 0;
-                        if (++fx == params.FX) {
-                            fx = 0;
-                            ic1++;
+                    else{ // read partial output from accumulation buffer
+                        #pragma hls_unroll yes
+                        for(int j = 0; j < OC0_MAX; j++){
+                            psum_buf.value[j] = accumulation_buffer[step][j];
+                            if (j == OC0 - 1) {
+                                break;
+                            }
                         }
                     }
                 }
-            }
-        }
+                // -------------------------------
+                // Your code ends here
+                // -------------------------------
+                
+                // Debug example:
+                // printf("psum_buf: %s\n", psum_buf.to_string().c_str());
 
+                /*
+                 * FIFOs for partial outputs coming in to the systolic array
+                 * assign values to psum_buf, and the skewed version will be in output_buf
+                 */
+                PackedInt<OUTPUT_PRECISION, OC0> output_buf;
+                #define ACCUM_FIFO_BODY(z,i,unused) \
+                    ODTYPE BOOST_PP_CAT(psum_fifo_output_, i); \
+                    ODTYPE BOOST_PP_CAT(psum_fifo_input_, i) = psum_buf.value[i]; \
+                    BOOST_PP_CAT(psum_fifo_, i).run( BOOST_PP_CAT(psum_fifo_input_, i) , BOOST_PP_CAT(psum_fifo_output_, i) ); \
+                    output_buf.value[i] = BOOST_PP_CAT(psum_fifo_output_, i);
+                
+                REPEAT(ACCUM_FIFO_BODY)
+        
+                // -------------------------------
+                // Assign values from output_buf into the partial sum registers for the first row of PEs
+                // Your code starts here
+                // -------------------------------
+                #pragma hls_unroll yes
+                LABEL(INIT_OUT) for(int j = 0; j < OC0_MAX; ++j) {
+                    psum_reg[0][j] = output_buf.value[j];
+                    if (j == OC0 - 1) {
+                        break;
+                    }
+                }
+                // -------------------------------
+                // Your code ends here
+                // -------------------------------
+            
+
+                // -------------------------------
+                // Run the 16x16 PE array
+                // Make sure that the correct registers are given to the PE
+                // Your code starts here
+                // -------------------------------
+                #pragma hls_unroll yes
+                LABEL(COL) for (int j=0; j < OC0_MAX; ++j) {
+                    #pragma hls_unroll yes
+                    LABEL(ROW) for (int i=0; i < IC0_MAX; ++i) {
+                        pe[i][j].run(input_reg[i][j], psum_reg[i][j], weight_reg[i][j], input_reg2[i][j], psum_reg2[i][j]);
+                        if (i == IC0 - 1) {
+                            break;
+                        }
+                    } //ROW
+                    if (j == OC0 - 1) {
+                        break;
+                    }
+                } //COL
+                // -------------------------------
+                // Your code ends here
+                // -------------------------------
+
+                // Captures PE register state into log files
+                #if HLS_DEBUG
+                #ifndef __SYNTHESIS__
+                log_matrix(input_file, input_reg, step, OC0);
+                log_matrix(weight_file, weight_reg, step, OC0);
+                log_matrix(psum_file, psum_reg, step, OC0);
+                #endif
+                #endif
+                
+
+                /*
+                 * FIFOs for partial outputs coming out of the systolic array
+                 * The skewed version will be in the variable output_row
+                 */
+                PackedInt<OUTPUT_PRECISION, OC0> output_row;
+
+                #define FIFO_WRITE_BODY_NEW(z,i,unused)\
+                    ODTYPE BOOST_PP_CAT(accum_fifo_output_, i); \
+                    BOOST_PP_CAT(accum_fifo_, i).run( psum_reg[IC0][i] , BOOST_PP_CAT(accum_fifo_output_, i) );\
+                    output_row.value[i] = BOOST_PP_CAT(accum_fifo_output_,i); \
+                
+                REPEAT(FIFO_WRITE_BODY_NEW)
+
+                // -------------------------------
+                // After a certain number of cycles, you will have valid output from the systolic array
+                // Depending on the loop indices, this valid output will either be written into the accumulation buffer or written out
+                // Your code starts here
+                // -------------------------------
+                if(step >= OC0+IC0-1){
+                    #pragma hls_unroll yes
+                    for(int i = 0; i < OC0_MAX; i++){
+                        accumulation_buffer[step-(IC0+OC0-1)][i] = output_row.value[i];
+                        if (i == OC0 - 1) {
+                            break;
+                        }
+                    }
+                    if (loopIndices.ic1_idx==params.IC1-1 && loopIndices.fx_idx == params.FX-1 && loopIndices.fy_idx == params.FY-1) {   
+                        output.write(output_row);
+                    }
+                }
+                // -------------------------------
+                // Your code ends here
+                // -------------------------------
+                
+                // -------------------------------
+                // Cycle the input/psum registers
+                // That is, the outputs that a PE wrote to should now become the input for the next PE
+                // Your code starts here
+                // -------------------------------
+                #pragma hls_unroll yes
+                for(int j = 0; j < OC0_MAX; j++){
+                    #pragma hls_unroll yes
+                    for(int i = 0; i < IC0_MAX; i++){
+                        input_reg[i][j+1] = input_reg2[i][j];
+                        psum_reg[i+1][j] = psum_reg2[i][j];
+                        if (i == IC0 - 1) {
+                            break;
+                        }
+                    }
+                    if (j == OC0 - 1) {
+                        break;
+                    }
+                }
+
+                // -------------------------------
+                // Your code ends here
+                // -------------------------------
+                if (step == step_bound-1) break;
+            }
         }
     
         // Debug example:

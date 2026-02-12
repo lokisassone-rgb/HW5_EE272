@@ -49,9 +49,6 @@ public:
                         for (int k = 0; k < 4; k++) {
                             memCol.value[j+k] = packet.value[k];
                         }
-                        if (j==IC0-4) {
-                            break;
-                        }
                     }
                     tmp.data[i] = memCol;
                 } // TILE
