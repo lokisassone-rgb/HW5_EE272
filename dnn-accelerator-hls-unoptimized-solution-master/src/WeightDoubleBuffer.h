@@ -34,6 +34,7 @@ public:
             #pragma hls_pipeline_init_interval 1
             TILES: for (int t = 0; t < OX1_MAX * OY1_MAX * OC1_MAX; t++) {
                 chanStruct<PackedInt<WEIGHT_PRECISION, OC0>,size> tmp;
+                #pragma hls_pipeline_init_interval 1
                 TILE: for (int i = 0; i < tileSize; i++) {
                     // each packet contains 4 values, pack OC0 tgt into one row
                     PackedInt<WEIGHT_PRECISION, OC0> memRow;  // one row in the memory
@@ -86,6 +87,7 @@ public:
             TILES: for (int t = 0; t < OX1_MAX * OY1_MAX * OC1_MAX; t++) {
                 chanStruct<PackedInt<WEIGHT_PRECISION, OC0>,size> tmp;
                 tmp = din.read();
+                #pragma hls_pipeline_init_interval 1
                 TILE: for (int i = 0; i < tileSize; i++) {
                     dout.write(tmp.data[i]);
                 } // TILE
