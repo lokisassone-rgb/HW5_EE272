@@ -406,9 +406,9 @@ public:
         }
 
         #ifndef __SYNTHESIS__
-        int expected_input_reads = (int)(params.IC1 * params.FX * params.FY * tile_size);
-        int expected_weight_reads = (int)(params.IC1 * params.FX * params.FY * IC0);
-        int expected_output_writes = (int)tile_size;
+        int expected_input_reads = params.IC1.to_int() * params.FX.to_int() * params.FY.to_int() * tile_size.to_int();
+        int expected_weight_reads = params.IC1.to_int() * params.FX.to_int() * params.FY.to_int() * IC0;
+        int expected_output_writes = tile_size.to_int();
         if (debug_input_reads != expected_input_reads ||
             debug_weight_reads != expected_weight_reads ||
             debug_output_writes != expected_output_writes) {
