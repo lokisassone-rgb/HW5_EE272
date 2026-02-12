@@ -93,75 +93,76 @@ public:
         ac_channel<PackedInt<INPUT_PRECISION, IC0> > &input, 
         ac_channel<PackedInt<WEIGHT_PRECISION, OC0> > &weight, 
         ac_channel<PackedInt<OUTPUT_PRECISION, OC0> > &output,
-        ac_channel<Params> &paramsIn,
-        ac_channel<LoopIndices> &loopIndicesIn)
+        ac_channel<Params> &paramsIn)
     {
         #ifndef __SYNTHESIS__
         // assert(params.OX0 * params.OY0 <= ACCUMULATION_BUFFER_SIZE);
-        // Debug example:
-        // printf("paramsIn channel size: %d\n", paramsIn.size());
-        // printf("loopIndicesIn channel size: %d\n", loopIndicesIn.size());
-        // printf("weight channel size: %d\n", weight.size());
-        // printf("input channel size: %d\n\n", input.size());
         #endif
 
         #ifndef __SYNTHESIS__
-        while(paramsIn.available(1) && loopIndicesIn.available(1) && input.available(paramsIn[0].OX0*paramsIn[0].OY0) && weight.available(IC0))
+        while(paramsIn.available(1))
         #endif
         {
             // -------------------------------
-            // Read in the params and loop indices from the channel
-            // Your code starts here
+            // Read in the params from the channel
             // -------------------------------
             Params params = paramsIn.read();
-            LoopIndices loopIndices = loopIndicesIn.read();
-            // -------------------------------
-            // Your code ends here
-            // -------------------------------
-
 
             // -------------------------------
-            // Create a loop for a "run" of the systolic array.
-            // The number of steps in a run of the systolic array is equal to:
-            // the ramp-up time + number of pixels + flush time
-            // Your code starts here
+            // HW5 Section 5: Flatten all inner loops into one INNER_LOOP
+            // Total MAC iterations = IC1 × FX × FY × OX0 × OY0
+            // Total steps = mac_iters + ramp + flush
             // -------------------------------
-            uint_16 step_bound = OC0+IC0+(params.OX0*params.OY0)-1;
-            //#pragma hls_pipeline_init_interval 1
-            LABEL(INNER_LOOP) for (uint_16 step = 0; step < OC0_MAX + IC0_MAX + OX0_MAX * OY0_MAX - 1; ++step) { // loop inside each image tile
-            // -------------------------------
-            // Your code ends here 
-            // You should now be in the body of the loop
-            // -------------------------------
+            uint_32 mac_iters = params.IC1 * params.FX * params.FY * params.OX0 * params.OY0;
+            uint_32 ramp = IC0 + OC0 - 2;
+            uint_32 total_steps = mac_iters + ramp;
+            
+            #pragma hls_pipeline_init_interval 1
+            LABEL(INNER_LOOP) for (uint_32 step = 0; step < IC1_MAX * FX_MAX * FY_MAX * OX0_MAX * OY0_MAX + IC0_MAX + OC0_MAX - 2; ++step) {
+                // -------------------------------
+                // Decode step into loop indices (ic1, fx, fy, pix)
+                // -------------------------------
+                uint_32 mac_step = (step < mac_iters) ? step : (mac_iters - 1);
+                
+                uint_32 pix = mac_step % (params.OX0 * params.OY0);
+                uint_32 tmp = mac_step / (params.OX0 * params.OY0);
+                
+                uint_16 fy = tmp % params.FY;
+                tmp /= params.FY;
+                
+                uint_16 fx = tmp % params.FX;
+                tmp /= params.FX;
+                
+                uint_16 ic1 = tmp;
+                
+                uint_16 oy0 = pix / params.OX0;
+                uint_16 ox0 = pix % params.OX0;
 
                 // -------------------------------
-                // If you are in the ramp up time, read in weights from the channel
-                // and store it in the weights array
-                // Your code starts here
+                // Load weights only when starting new pixel (pix == 0)
+                // This happens once per IC1×FX×FY combination
                 // -------------------------------
-                if (step < IC0) {       
-                    PackedInt<WEIGHT_PRECISION, OC0> w_row = weight.read();
+                if (pix == 0 && step < mac_iters) {
                     #pragma hls_unroll yes
-                    for(int j = 0; j < OC0_MAX; j++){
-                            weight_reg[step][j] = w_row.value[j];
-                            if (j == OC0 - 1){
-                                break;
+                    for(int i = 0; i < IC0_MAX; i++){
+                        if (i < IC0) {
+                            PackedInt<WEIGHT_PRECISION, OC0> w_row = weight.read();
+                            #pragma hls_unroll yes
+                            for(int j = 0; j < OC0_MAX; j++){
+                                weight_reg[i][j] = w_row.value[j];
+                                if (j == OC0 - 1) break;
                             }
+                        }
+                        if (i == IC0 - 1) break;
                     }
                 }
-                // -------------------------------
-                // Your code ends here
-                // -------------------------------
-                
                 
                 PackedInt<INPUT_PRECISION, IC0> in_col;
 
                 // -------------------------------
-                // Read inputs from the channel and store in the variable in_col
-                // Note: you don't read in any inputs during the flush time
-                // Your code starts here
+                // Read inputs every step during active MAC iterations
                 // -------------------------------
-                if (step < (params.OX0*params.OY0)) {        
+                if (step < mac_iters) {        
                     in_col = input.read();
                 }
                 // -------------------------------
@@ -205,12 +206,11 @@ public:
                 
                 // -------------------------------
                 // Set partial outputs for the array to psum_buf.
-                // Depending on the loop index, the partial output will be 0 or a value from the accumulation buffer
-                // Your code starts here
+                // Initialize to 0 only at first IC1/FX/FY, otherwise read from accumulation buffer
                 // -------------------------------
-                if(step < (params.OX0*params.OY0)){
+                if(step < mac_iters){
                     // initial partial output of 0
-                    if(loopIndices.ic1_idx == 0 && loopIndices.fx_idx == 0 && loopIndices.fy_idx == 0) {
+                    if(ic1 == 0 && fx == 0 && fy == 0) {
                         #pragma hls_unroll yes
                         for(int j = 0; j < OC0_MAX; j++){
                             psum_buf.value[j].template set_val<AC_VAL_0>();
@@ -219,10 +219,10 @@ public:
                             }
                         }
                     }
-                    else{ // read partial output from accumulation buffer
+                    else{ // read partial output from accumulation buffer using pixel index
                         #pragma hls_unroll yes
                         for(int j = 0; j < OC0_MAX; j++){
-                            psum_buf.value[j] = accumulation_buffer[step][j];
+                            psum_buf.value[j] = accumulation_buffer[pix][j];
                             if (j == OC0 - 1) {
                                 break;
                             }
@@ -311,19 +311,19 @@ public:
                 REPEAT(FIFO_WRITE_BODY_NEW)
 
                 // -------------------------------
-                // After a certain number of cycles, you will have valid output from the systolic array
-                // Depending on the loop indices, this valid output will either be written into the accumulation buffer or written out
-                // Your code starts here
+                // After ramp-up, write valid outputs to accumulation buffer
+                // Write to output channel only at final IC1×FX×FY
                 // -------------------------------
-                if(step >= OC0+IC0-1){
+                if(step >= ramp && step < mac_iters + ramp){
                     #pragma hls_unroll yes
                     for(int i = 0; i < OC0_MAX; i++){
-                        accumulation_buffer[step-(IC0+OC0-1)][i] = output_row.value[i];
+                        accumulation_buffer[pix][i] = output_row.value[i];
                         if (i == OC0 - 1) {
                             break;
                         }
                     }
-                    if (loopIndices.ic1_idx==params.IC1-1 && loopIndices.fx_idx == params.FX-1 && loopIndices.fy_idx == params.FY-1) {   
+                    // Only write output at the last IC1, FX, FY
+                    if (ic1 == params.IC1-1 && fx == params.FX-1 && fy == params.FY-1) {   
                         output.write(output_row);
                     }
                 }
@@ -354,7 +354,7 @@ public:
                 // -------------------------------
                 // Your code ends here
                 // -------------------------------
-                if (step == step_bound-1) break;
+                if (step == total_steps-1) break;
             }
         }
     
