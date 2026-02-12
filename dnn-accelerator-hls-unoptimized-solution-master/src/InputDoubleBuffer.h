@@ -45,7 +45,7 @@ public:
                     // each packet contains 4 values, pack IC0 tgt into one row
                     for (int j = 0; j < IC0_MAX; j=j+4) {
                         PackedInt<INPUT_PRECISION, 4> packet = din.read();
-                       // #pragma hls_unroll yes
+                       #pragma hls_unroll yes
                         for (int k = 0; k < 4; k++) {
                             memCol.value[j+k] = packet.value[k];
                         }
