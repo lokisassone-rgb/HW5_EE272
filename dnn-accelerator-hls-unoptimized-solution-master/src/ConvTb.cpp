@@ -139,14 +139,20 @@ int run_layer(Params params){
 
                 if ((long long)output_ref[ro*params.OY0+p][co*params.OX0+i][koo*OC0+j] != (long long)output_ref_tiled[ro*params.OY0+p][co*params.OX0+i][koo*OC0+j]) {
                   printf("***REFERENCE ERROR***\n");
-                  printf("output[%d][%d][%d], ref = %lld, ref tiled = %lld\n",ro*params.OY0+p, co*params.OX0+i, koo*OC0+j, (long long)output_ref[ro*params.OY0+p][co*params.OX0+i][koo*OC0+j], (long long)output_ref_tiled[ro*params.OY0+p][co*params.OX0+i][koo*OC0+j]);
+                      printf("output[%d][%d][%d], ref = %lld, ref tiled = %lld\n",
+                        (int)(ro*params.OY0+p), (int)(co*params.OX0+i), (int)(koo*OC0+j),
+                        (long long)output_ref[ro*params.OY0+p][co*params.OX0+i][koo*OC0+j],
+                        (long long)output_ref_tiled[ro*params.OY0+p][co*params.OX0+i][koo*OC0+j]);
                 }
 
                 if((long long)output_ref[ro*params.OY0+p][co*params.OX0+i][koo*OC0+j] != (long long)out_value) {
                   errCnt++;
                   if (errCnt < 10) {
                     printf("***ERROR***\n");
-                    printf("output[%d][%d][%d] = %lld, ref = %lld\n",ro*params.OY0+p, co*params.OX0+i, koo*OC0+j, (long long)out_value, (long long)output_ref[ro*params.OY0+p][co*params.OX0+i][koo*OC0+j]);
+                          printf("output[%d][%d][%d] = %lld, ref = %lld\n",
+                            (int)(ro*params.OY0+p), (int)(co*params.OX0+i), (int)(koo*OC0+j),
+                            (long long)out_value,
+                            (long long)output_ref[ro*params.OY0+p][co*params.OX0+i][koo*OC0+j]);
                   }
                 }
               }  // for j
