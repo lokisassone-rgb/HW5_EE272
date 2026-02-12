@@ -45,7 +45,7 @@ public:
                     // each packet contains 4 values, pack IC0 tgt into one row
                     for (int j = 0; j < IC0_MAX; j=j+4) {
                         PackedInt<INPUT_PRECISION, 4> packet = din.read();
-                        #pragma hls_unroll yes
+                       // #pragma hls_unroll yes
                         for (int k = 0; k < 4; k++) {
                             memCol.value[j+k] = packet.value[k];
                         }
@@ -103,7 +103,7 @@ public:
                         FY: for (int fy = 0; fy < FY_MAX; fy++) {
                             FX: for (int fx = 0; fx < FX_MAX; fx++) {
                                 OY0: for (int oy0 = 0; oy0 < OY0_MAX; oy0++) {
-                                    #pragma hls_pipeline_init_interval 1 
+                                   // #pragma hls_pipeline_init_interval 1 
                                     OX0: for (int ox0 = 0; ox0 < OX0_MAX; ox0++) { 
                                         uint_16 address =
                                                 params.STRIDE * ox0 + fx +

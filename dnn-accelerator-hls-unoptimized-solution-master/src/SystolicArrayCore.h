@@ -122,7 +122,11 @@ public:
                 // -------------------------------
                 // Decode step into loop indices (ic1, fx, fy, pix)
                 // -------------------------------
-                uint_32 mac_step = (step < mac_iters) ? step : (mac_iters - 1);
+                uint_32 mac_step =
+                    (step < mac_iters)
+                        ? (uint_32)step
+                        : (uint_32)(mac_iters - 1);
+
                 
                 uint_32 pix = mac_step % (params.OX0 * params.OY0);
                 uint_32 tmp = mac_step / (params.OX0 * params.OY0);
