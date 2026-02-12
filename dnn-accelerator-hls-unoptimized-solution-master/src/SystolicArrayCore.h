@@ -141,9 +141,10 @@ public:
            // -------------------------------
         // -------------------------------
         uint_32 tile_size = params.OX0 * params.OY0;
-        uint_32 mac_iters = params.IC1 * params.FX * params.FY * tile_size;
+        uint_32 groups = params.IC1 * params.FX * params.FY;
         uint_32 ramp = IC0 + OC0 - 1;
-        uint_32 total_steps = mac_iters + ramp;
+        uint_32 group_span = tile_size + ramp;
+        uint_32 total_steps = groups * group_span;
 
         // Reset per-run architectural state to avoid cross-tile/oc1 contamination.
         #pragma hls_unroll yes
@@ -210,16 +211,18 @@ public:
         #pragma hls_pipeline_init_interval 1
         LABEL(INNER_LOOP)
         for (uint_32 step = 0;
-            step < IC1_MAX * FX_MAX * FY_MAX * OX0_MAX * OY0_MAX
-                + IC0_MAX + OC0_MAX - 1;
+            step < IC1_MAX * FX_MAX * FY_MAX * (OX0_MAX * OY0_MAX + IC0_MAX + OC0_MAX - 1);
             ++step)
         {
             // Stop after required cycles
             if (step == total_steps) break;
 
-            uint_32 input_mac = step;
-            uint_32 input_pix = input_mac % tile_size;
-            uint_32 input_group = input_mac / tile_size;
+            uint_32 group_idx = step / group_span;
+            uint_32 in_group_step = step % group_span;
+            bool group_active = in_group_step < tile_size;
+
+            uint_32 input_pix = in_group_step;
+            uint_32 input_group = group_idx;
 
             uint_32 tmp_in = input_group;
             uint_16 in_fx = tmp_in % params.FX;
@@ -231,7 +234,7 @@ public:
             // -------------------------------
             // Load weights once per IC1×FX×FY
             // -------------------------------
-            if (step < mac_iters && input_pix == 0) {
+            if (group_idx < groups && in_group_step == 0) {
                 for (int i = 0; i < IC0_MAX; i++) {
                     if (i < IC0) {
                         PackedInt<WEIGHT_PRECISION, OC0> w_row = weight.read();
@@ -252,7 +255,7 @@ public:
             // Read input
             // -------------------------------
             PackedInt<INPUT_PRECISION, IC0> in_col;
-            if (step < mac_iters) {
+            if (group_idx < groups && group_active) {
                 in_col = input.read();
                 #ifndef __SYNTHESIS__
                 debug_input_reads++;
@@ -289,7 +292,7 @@ public:
             // -------------------------------
             PackedInt<OUTPUT_PRECISION, OC0> psum_buf;
 
-            if (step < mac_iters) {
+            if (group_idx < groups && group_active) {
                 if (in_ic1 == 0 && in_fx == 0 && in_fy == 0) {
                     #pragma hls_unroll yes
                     for (int j = 0; j < OC0_MAX; j++) {
@@ -360,17 +363,8 @@ public:
             // -------------------------------
             // Write back / output
             // -------------------------------
-            if (step >= ramp && step < mac_iters + ramp) {
-                uint_32 output_mac = step - ramp;
-                uint_32 output_pix = output_mac % tile_size;
-                uint_32 output_group = output_mac / tile_size;
-
-                uint_32 tmp_out = output_group;
-                uint_16 out_fx = tmp_out % params.FX;
-                tmp_out /= params.FX;
-                uint_16 out_fy = tmp_out % params.FY;
-                tmp_out /= params.FY;
-                uint_16 out_ic1 = tmp_out;
+            if (group_idx < groups && in_group_step >= ramp && in_group_step < group_span) {
+                uint_32 output_pix = in_group_step - ramp;
 
                 #pragma hls_unroll yes
                 for (int i = 0; i < OC0_MAX; i++) {
@@ -378,9 +372,7 @@ public:
                     if (i == OC0 - 1) break;
                 }
 
-                if (out_ic1 == params.IC1-1 &&
-                    out_fy  == params.FY-1  &&
-                    out_fx  == params.FX-1) {
+                if (group_idx == groups - 1) {
                     output.write(output_row);
                     #ifndef __SYNTHESIS__
                     debug_output_writes++;
@@ -406,8 +398,8 @@ public:
         }
 
         #ifndef __SYNTHESIS__
-        int expected_input_reads = params.IC1.to_int() * params.FX.to_int() * params.FY.to_int() * tile_size.to_int();
-        int expected_weight_reads = params.IC1.to_int() * params.FX.to_int() * params.FY.to_int() * IC0;
+        int expected_input_reads = groups.to_int() * tile_size.to_int();
+        int expected_weight_reads = groups.to_int() * IC0;
         int expected_output_writes = tile_size.to_int();
         if (debug_input_reads != expected_input_reads ||
             debug_weight_reads != expected_weight_reads ||
