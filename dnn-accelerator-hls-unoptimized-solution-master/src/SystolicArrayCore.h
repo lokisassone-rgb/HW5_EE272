@@ -133,19 +133,18 @@ public:
             // Total MAC iterations = IC1 × FX × FY × OX0 × OY0
             // Total steps = mac_iters + ramp + flush
             // -------------------------------
-           // -------------------------------
         // -------------------------------
         uint_32 tile_size = params.OX0 * params.OY0;
         uint_32 groups = params.IC1 * params.FX * params.FY;
         uint_32 total_mac_ops = groups * tile_size;  // Total MAC operations
-        // Pipeline depth: input FIFO (1) + IC0 PE rows + OC0 accum FIFO = IC0 + OC0 + 1
-        // But we index from 0, so ramp_cycles = IC0 + OC0
-        uint_32 ramp_cycles = IC0 + OC0;
+        uint_32 ramp_cycles = IC0 + OC0 - 1;         // Pipeline latency
         uint_32 total_cycles = total_mac_ops + ramp_cycles;
 
         uint_16 active_bank = 0;
-        uint_32 global_idx = 0;  // NEW: tracks which MAC operation we're on (0 to total_mac_ops-1)
+        uint_32 global_idx = 0;  // Tracks which MAC operation we're on (0 to total_mac_ops-1)
+        uint_32 weight_load_row = 0;  // Tracks which row of next weights we're loading
 
+        // Load initial weights for group 0 into bank 0
         if (groups > 0) {
             for (int i = 0; i < IC0_MAX; i++) {
                 if (i < IC0) {
@@ -162,16 +161,16 @@ public:
 
         #pragma hls_pipeline_init_interval 1
         LABEL(INNER_LOOP)
-        // REMOVE: input_group, input_pix, output_group, output_pix counters from here
-        for (uint_32 step = 0; step < IC1_MAX * FX_MAX * FY_MAX * OX0_MAX * OY0_MAX + IC0_MAX + OC0_MAX; ++step)
+        for (uint_32 step = 0; step < IC1_MAX * FX_MAX * FY_MAX * OX0_MAX * OY0_MAX + IC0_MAX + OC0_MAX - 1; ++step)
         {
-            if (step == total_cycles) break;  // Use total_cycles instead
-            bool mac_active = (step < total_mac_ops);  // Use total_mac_ops
+            if (step == total_cycles) break;
+            bool mac_active = (step < total_mac_ops);
             
-            // NEW: Decode global_idx into logical indices (inside the loop)
+            // Decode global_idx into logical indices
             uint_32 current_pix = global_idx % tile_size;
             uint_32 current_group = global_idx / tile_size;
             
+            // Load weights for next group during last IC0 pixels of current group
             if (mac_active && (current_group + 1 < groups)) {
                 uint_32 pixels_left_in_group = tile_size - current_pix;
                 if (pixels_left_in_group <= IC0) {
@@ -223,14 +222,18 @@ public:
             // -------------------------------
             PackedInt<OUTPUT_PRECISION, OC0> psum_buf;
 
+            // For the first tile_size inputs (group 0), initialize psum to zero
+            // For subsequent groups, read previously accumulated psum from buffer
             if (mac_active) {
-                if (current_group == 0) {
+                if (global_idx < tile_size) {
+                    // First group - initialize to zero
                     #pragma hls_unroll yes
                     for (int j = 0; j < OC0_MAX; j++) {
                         psum_buf.value[j].template set_val<AC_VAL_0>();
                         if (j == OC0 - 1) break;
                     }
                 } else {
+                    // Subsequent groups - read accumulated psum
                     #pragma hls_unroll yes
                     for (int j = 0; j < OC0_MAX; j++) {
                         psum_buf.value[j] = accumulation_buffer[current_pix][j];
@@ -271,9 +274,14 @@ public:
             for (int j = 0; j < OC0_MAX; j++) {
                 #pragma hls_unroll yes
                 for (int i = 0; i < IC0_MAX; i++) {
+                    // Determine which weight bank to use for this PE
+                    // Row i receives input delayed by i cycles (due to input FIFO depth i+1)
+                    // At start of new group (current_pix < i), row i is still processing 
+                    // the PREVIOUS group's data, so use the previous bank
                     uint_16 bank_sel = active_bank;
                     if (current_group > 0 && current_pix < (uint_32)i) {
-                        bank_sel = 1 - active_bank;
+                        // Row i is still working on previous group data
+                        bank_sel = 1 - active_bank;  // Use previous bank (which has previous weights)
                     }
                     pe[i][j].run(input_reg[i][j], psum_reg[i][j],
                                 weight_reg[bank_sel][i][j],
