@@ -175,7 +175,11 @@ public:
                 if (pixels_left_in_group <= IC0) {
                     uint_32 weight_row_idx = IC0 - pixels_left_in_group;
                     PackedInt<WEIGHT_PRECISION, OC0> w_row = weight.read();
-                    weight_reg[1 - active_bank][preload_row][j] = w_row.value[j];
+                    #pragma hls_unroll yes
+                    for (int j = 0; j < OC0_MAX; j++) {
+                        weight_reg[1 - active_bank][weight_row_idx][j] = w_row.value[j];
+                        if (j == OC0 - 1) break;
+                    }
                 }
             }
 
