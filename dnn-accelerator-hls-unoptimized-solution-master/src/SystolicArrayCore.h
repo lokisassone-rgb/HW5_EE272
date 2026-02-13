@@ -138,7 +138,9 @@ public:
         uint_32 tile_size = params.OX0 * params.OY0;
         uint_32 groups = params.IC1 * params.FX * params.FY;
         uint_32 total_mac_ops = groups * tile_size;  // Total MAC operations
-        uint_32 ramp_cycles = IC0 + OC0 - 1;         // Only ONE ramp-up
+        // Pipeline depth: input FIFO (1) + IC0 PE rows + OC0 accum FIFO = IC0 + OC0 + 1
+        // But we index from 0, so ramp_cycles = IC0 + OC0
+        uint_32 ramp_cycles = IC0 + OC0;
         uint_32 total_cycles = total_mac_ops + ramp_cycles;
 
         uint_16 active_bank = 0;
@@ -161,7 +163,7 @@ public:
         #pragma hls_pipeline_init_interval 1
         LABEL(INNER_LOOP)
         // REMOVE: input_group, input_pix, output_group, output_pix counters from here
-        for (uint_32 step = 0; step < IC1_MAX * FX_MAX * FY_MAX * OX0_MAX * OY0_MAX + IC0_MAX + OC0_MAX - 1; ++step)
+        for (uint_32 step = 0; step < IC1_MAX * FX_MAX * FY_MAX * OX0_MAX * OY0_MAX + IC0_MAX + OC0_MAX; ++step)
         {
             if (step == total_cycles) break;  // Use total_cycles instead
             bool mac_active = (step < total_mac_ops);  // Use total_mac_ops
