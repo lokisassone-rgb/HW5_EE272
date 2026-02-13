@@ -135,15 +135,13 @@ public:
         uint_32 tile_size = params.OX0 * params.OY0;
         uint_32 groups = params.IC1 * params.FX * params.FY;
         uint_32 ramp = IC0 + OC0 - 1;
-        uint_32 mac_iters = groups * tile_size;
-        uint_32 total_steps = mac_iters + ramp;
+        uint_32 group_span = tile_size + ramp;
+        uint_32 total_steps = groups * group_span;
 
         #pragma hls_pipeline_init_interval 1
         LABEL(INNER_LOOP)
-        uint_32 input_group = 0;
+        uint_32 group_idx = 0;
         uint_32 input_pix = 0;
-        uint_32 output_group = 0;
-        uint_32 output_pix = 0;
         uint_16 in_ic1 = 0;
         uint_16 in_fy = 0;
         uint_16 in_fx = 0;
@@ -153,22 +151,17 @@ public:
         {
             // Stop after required cycles
             if (step == total_steps) break;
-            bool mac_active = (step < mac_iters);
+            bool group_active = input_pix < tile_size;
 
             // -------------------------------
             // Load weights once per IC1×FX×FY
             // -------------------------------
-            if (mac_active && input_pix == 0) {
-                for (int i = 0; i < IC0_MAX; i++) {
-                    if (i < IC0) {
-                        PackedInt<WEIGHT_PRECISION, OC0> w_row = weight.read();
-                        #pragma hls_unroll yes
-                        for (int j = 0; j < OC0_MAX; j++) {
-                            weight_reg[i][j] = w_row.value[j];
-                            if (j == OC0 - 1) break;
-                        }
-                    }
-                    if (i == IC0 - 1) break;
+            if (group_idx < groups && input_pix < IC0) {
+                PackedInt<WEIGHT_PRECISION, OC0> w_row = weight.read();
+                #pragma hls_unroll yes
+                for (int j = 0; j < OC0_MAX; j++) {
+                    weight_reg[input_pix][j] = w_row.value[j];
+                    if (j == OC0 - 1) break;
                 }
             }
 
@@ -176,7 +169,7 @@ public:
             // Read input
             // -------------------------------
             PackedInt<INPUT_PRECISION, IC0> in_col;
-            if (mac_active) {
+            if (group_idx < groups && group_active) {
                 in_col = input.read();
             } else {
                 #pragma hls_unroll yes
@@ -210,8 +203,8 @@ public:
             // -------------------------------
             PackedInt<OUTPUT_PRECISION, OC0> psum_buf;
 
-            if (mac_active) {
-                if (input_group == 0) {
+            if (group_idx < groups && group_active) {
+                if (group_idx == 0) {
                     #pragma hls_unroll yes
                     for (int j = 0; j < OC0_MAX; j++) {
                         psum_buf.value[j].template set_val<AC_VAL_0>();
@@ -281,22 +274,15 @@ public:
             // -------------------------------
             // Write back / output
             // -------------------------------
-            if (step >= ramp && step < mac_iters + ramp) {
+            if (group_idx < groups && input_pix >= ramp && input_pix < group_span) {
                 #pragma hls_unroll yes
                 for (int i = 0; i < OC0_MAX; i++) {
-                    accumulation_buffer[output_pix][i] = output_row.value[i];
+                    accumulation_buffer[input_pix - ramp][i] = output_row.value[i];
                     if (i == OC0 - 1) break;
                 }
 
-                if (output_group == groups - 1) {
+                if (group_idx == groups - 1) {
                     output.write(output_row);
-                }
-
-                if (output_pix == tile_size - 1) {
-                    output_pix = 0;
-                    output_group++;
-                } else {
-                    output_pix++;
                 }
             }
 
@@ -314,25 +300,23 @@ public:
                 if (j == OC0 - 1) break;
             }
 
-            if (mac_active) {
-                if (input_pix == tile_size - 1) {
-                    input_pix = 0;
-                    input_group++;
+            if (input_pix == group_span - 1) {
+                input_pix = 0;
+                group_idx++;
 
-                    if (in_fx == params.FX - 1) {
-                        in_fx = 0;
-                        if (in_fy == params.FY - 1) {
-                            in_fy = 0;
-                            in_ic1++;
-                        } else {
-                            in_fy++;
-                        }
+                if (in_fx == params.FX - 1) {
+                    in_fx = 0;
+                    if (in_fy == params.FY - 1) {
+                        in_fy = 0;
+                        in_ic1++;
                     } else {
-                        in_fx++;
+                        in_fy++;
                     }
                 } else {
-                    input_pix++;
+                    in_fx++;
                 }
+            } else {
+                input_pix++;
             }
 
             // Input/output indices are derived from step; no manual counter update needed.
