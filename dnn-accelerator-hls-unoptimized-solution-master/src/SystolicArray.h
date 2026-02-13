@@ -18,10 +18,7 @@ public:
 void run(ac_channel<Params> &paramsIn,
          ac_channel<Params> &paramsOut)
     {
-        // -------------------------------
-        // Generate params for each image tile
-        // HW5 Section 5: IC1/FX/FY loops moved into SystolicArrayCore
-        // -------------------------------
+
         #ifndef __SYNTHESIS__
         while (paramsIn.available(1))
         #endif
