@@ -74,7 +74,10 @@ public:
             for (int j = 0; j < OC0+1; j++) input_reg[i][j] = 0;
             for (int j = 0; j < OC0; j++) input_reg2[i][j] = 0;
             for (int j = 0; j < OC0; j++) psum_reg2[i][j] = 0;
-            for (int j = 0; j < OC0; j++) weight_reg[i][j] = 0;
+            for (int j = 0; j < OC0; j++) {
+                weight_reg[0][i][j] = 0;
+                weight_reg[1][i][j] = 0;
+            }
         }
 
         for (int i = 0; i < IC0+1; i++) {
@@ -125,18 +128,11 @@ public:
             // -------------------------------
             Params params = paramsIn.read();
 
-            // -------------------------------
-            // HW5 Section 5: Flatten all inner loops into one INNER_LOOP
-            // Total MAC iterations = IC1 × FX × FY × OX0 × OY0
-            // Total steps = mac_iters + ramp + flush
-            // -------------------------------
-           // -------------------------------
-        // -------------------------------
-        uint_32 tile_size = params.OX0 * params.OY0;
-        uint_32 groups = params.IC1 * params.FX * params.FY;
-        uint_32 ramp = IC0 + OC0 - 1;
-        uint_32 group_span = tile_size + ramp;
-        uint_32 total_steps = groups * group_span;
+                uint_32 tile_size = params.OX0 * params.OY0;
+                uint_32 groups = params.IC1 * params.FX * params.FY;
+                uint_32 ramp = IC0 + OC0 - 1;
+                uint_32 mac_iters = groups * tile_size;
+                uint_32 total_steps = mac_iters + ramp;
 
         #pragma hls_pipeline_init_interval 1
         LABEL(INNER_LOOP)
@@ -147,13 +143,14 @@ public:
             ++step)
         {
             if (step == total_steps) break;
-            bool group_active = input_pix < tile_size;
+            bool group_active = step < mac_iters;
+            int active_bank = (int)(group_idx & 1);
 
             if (group_idx < groups && input_pix < IC0) {
                 PackedInt<WEIGHT_PRECISION, OC0> w_row = weight.read();
                 #pragma hls_unroll yes
                 for (int j = 0; j < OC0_MAX; j++) {
-                    weight_reg[input_pix][j] = w_row.value[j];
+                    weight_reg[active_bank][input_pix][j] = w_row.value[j];
                     if (j == OC0 - 1) break;
                 }
             }
@@ -242,10 +239,14 @@ public:
             // -------------------------------
             #pragma hls_unroll yes
             for (int j = 0; j < OC0_MAX; j++) {
+                int group_for_bank = (group_idx < groups) ? (int)group_idx : (int)(groups - 1);
+                int pix_for_bank = (group_idx < groups) ? (int)input_pix : (int)tile_size;
+                int curr_bank = group_for_bank & 1;
+                int bank_sel = (group_for_bank > 0 && pix_for_bank < j) ? (1 - curr_bank) : curr_bank;
                 #pragma hls_unroll yes
                 for (int i = 0; i < IC0_MAX; i++) {
                     pe[i][j].run(input_reg[i][j], psum_reg[i][j],
-                                weight_reg[i][j],
+                                weight_reg[bank_sel][i][j],
                                 input_reg2[i][j], psum_reg2[i][j]);
                     if (i == IC0 - 1) break;
                 }
@@ -267,15 +268,20 @@ public:
             // -------------------------------
             // Write back / output
             // -------------------------------
-            if (group_idx < groups && input_pix >= ramp && input_pix < group_span) {
-                #pragma hls_unroll yes
-                for (int i = 0; i < OC0_MAX; i++) {
-                    accumulation_buffer[input_pix - ramp][i] = output_row.value[i];
-                    if (i == OC0 - 1) break;
-                }
+            if (step >= ramp) {
+                uint_32 out_global = step - ramp;
+                if (out_global < mac_iters) {
+                    uint_32 out_group = out_global / tile_size;
+                    uint_32 out_pix = out_global - out_group * tile_size;
+                    #pragma hls_unroll yes
+                    for (int i = 0; i < OC0_MAX; i++) {
+                        accumulation_buffer[out_pix][i] = output_row.value[i];
+                        if (i == OC0 - 1) break;
+                    }
 
-                if (group_idx == groups - 1) {
-                    output.write(output_row);
+                    if (out_group == groups - 1) {
+                        output.write(output_row);
+                    }
                 }
             }
 
@@ -293,14 +299,14 @@ public:
                 if (j == OC0 - 1) break;
             }
 
-            if (input_pix == group_span - 1) {
-                input_pix = 0;
-                group_idx++;
-            } else {
-                input_pix++;
+            if (group_active) {
+                if (input_pix == tile_size - 1) {
+                    input_pix = 0;
+                    group_idx++;
+                } else {
+                    input_pix++;
+                }
             }
-
-            // Input/output indices are derived from step; no manual counter update needed.
         }
 
         }
@@ -323,7 +329,7 @@ private:
     ProcessingElement<IDTYPE, WDTYPE, ODTYPE> pe[IC0][OC0];
 
     ODTYPE accumulation_buffer[ACCUMULATION_BUFFER_SIZE][OC0];
-    WDTYPE weight_reg[IC0][OC0];
+    WDTYPE weight_reg[2][IC0][OC0];
     IDTYPE input_reg[IC0][OC0+1];
     IDTYPE input_reg2[IC0][OC0];
     ODTYPE psum_reg[IC0+1][OC0];
