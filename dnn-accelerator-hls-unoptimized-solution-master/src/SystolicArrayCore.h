@@ -74,7 +74,10 @@ public:
             for (int j = 0; j < OC0+1; j++) input_reg[i][j] = 0;
             for (int j = 0; j < OC0; j++) input_reg2[i][j] = 0;
             for (int j = 0; j < OC0; j++) psum_reg2[i][j] = 0;
-            for (int j = 0; j < OC0; j++) weight_reg[i][j] = 0;
+            for (int j = 0; j < OC0; j++) {
+                weight_reg[0][i][j] = 0;
+                weight_reg[1][i][j] = 0;
+            }
         }
 
         for (int i = 0; i < IC0+1; i++) {
