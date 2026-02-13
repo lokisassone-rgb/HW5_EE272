@@ -280,7 +280,12 @@ public:
                     // We need to use the weight bank that matches that input's group
                     
                     // Calculate which group row i is actually processing
-                    uint_32 row_processing_idx = (global_idx >= (uint_32)i) ? (global_idx - i) : 0;
+                    uint_32 row_processing_idx;
+                    if (global_idx >= (uint_32)i) {
+                        row_processing_idx = global_idx - (uint_32)i;
+                    } else {
+                        row_processing_idx = 0;
+                    }
                     uint_32 row_processing_group = row_processing_idx / tile_size;
                     
                     // Use active_bank if row is processing current_group, else use other bank
