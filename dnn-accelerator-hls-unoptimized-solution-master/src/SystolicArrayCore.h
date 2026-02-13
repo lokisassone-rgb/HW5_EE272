@@ -275,14 +275,23 @@ public:
                 #pragma hls_unroll yes
                 for (int i = 0; i < IC0_MAX; i++) {
                     // Determine which weight bank to use for this PE
-                    // Row i receives input delayed by i cycles (due to input FIFO depth i+1)
-                    // At start of new group (current_pix < i), row i is still processing 
-                    // the PREVIOUS group's data, so use the previous bank
-                    uint_16 bank_sel = active_bank;
-                    if (current_group > 0 && current_pix < (uint_32)i) {
-                        // Row i is still working on previous group data
-                        bank_sel = 1 - active_bank;  // Use previous bank (which has previous weights)
+                    // Row i has input delayed by i cycles (FIFO depth i+1, delay = i)
+                    // So row i is processing input from (global_idx - i) when global_idx >= i
+                    // We need to use the weight bank that matches that input's group
+                    
+                    // Calculate which group row i is actually processing
+                    uint_32 row_processing_idx = (global_idx >= (uint_32)i) ? (global_idx - i) : 0;
+                    uint_32 row_processing_group = row_processing_idx / tile_size;
+                    
+                    // Use active_bank if row is processing current_group, else use other bank
+                    // Note: active_bank corresponds to current_group's weights after the switch
+                    uint_16 bank_sel;
+                    if (row_processing_group == current_group) {
+                        bank_sel = active_bank;
+                    } else {
+                        bank_sel = 1 - active_bank;
                     }
+                    
                     pe[i][j].run(input_reg[i][j], psum_reg[i][j],
                                 weight_reg[bank_sel][i][j],
                                 input_reg2[i][j], psum_reg2[i][j]);
