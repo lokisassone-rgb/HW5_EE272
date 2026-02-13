@@ -242,9 +242,10 @@ public:
                 int group_for_bank = (group_idx < groups) ? (int)group_idx : (int)(groups - 1);
                 int pix_for_bank = (group_idx < groups) ? (int)input_pix : (int)tile_size;
                 int curr_bank = group_for_bank & 1;
-                int bank_sel = (group_for_bank > 0 && pix_for_bank < j) ? (1 - curr_bank) : curr_bank;
                 #pragma hls_unroll yes
                 for (int i = 0; i < IC0_MAX; i++) {
+                    int wave_delay = i + j;
+                    int bank_sel = (group_for_bank > 0 && pix_for_bank < wave_delay) ? (1 - curr_bank) : curr_bank;
                     pe[i][j].run(input_reg[i][j], psum_reg[i][j],
                                 weight_reg[bank_sel][i][j],
                                 input_reg2[i][j], psum_reg2[i][j]);
